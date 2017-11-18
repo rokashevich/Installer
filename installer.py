@@ -184,12 +184,7 @@ class Installer(QWidget):
                 elif host.result == TableData.Host.Result.PRE_SUCCESS:
                     text = 'Установлен base, установлен сonf, выполнен pre-скрипт'
                 elif host.result == TableData.Host.Result.SUCCESS:
-                    text = 'Установлен base'
-                    if self.is_distribution_with_conf:
-                        text += ', установлен conf'
-                        if self.is_prepare_script_used:
-                            text += ', pre-скрипт выполнен'
-                    text += ' - OK'
+                    text = 'ОК'
                 elif host.result == TableData.Host.Result.FAILURE:
                     text = 'ОШИБКА'
                 else:  # UNKNOWN
@@ -559,9 +554,9 @@ class Installer(QWidget):
             s = os.path.join(self.installation_path.text(), 'etc', self.pre_install_scripts_combo.currentText())
             for host in self.table.model().data.hosts:
                 if host.result == TableData.Host.Result.CONF_SUCCESS:
-                    s = os.path.join(self.installation_path.text(), 'etc',
-                                     self.pre_install_scripts_combo.currentText())
+
                     cmd = r'psexec \\' + host.hostname + ' -u st -p stinstaller ' + s
+                    print(cmd)
                     r = subprocess.run(cmd)
                     host.result = TableData.Host.Result.PRE_SUCCESS if r.returncode == 0 else TableData.Host.Result.FAILURE
                     print('Run=' + cmd + ' Result=' + str(r.returncode))
@@ -570,7 +565,6 @@ class Installer(QWidget):
             print('No prepare script - skip')
         self.is_local_idle = True
         self.worker_needed.emit()
-
 
     def worker(self):
         # Копирование base
@@ -604,36 +598,33 @@ class Installer(QWidget):
 
         # Далее идут однопоточные операции с блокированием через self.is_local_idle,
         # поэтому дальше проходит не более одного worker-а.
-        print(1)
-        if not self.is_local_idle == True:
-            print(2)
+        if not self.is_local_idle:
             return
-        print(3)
 
         # Копирование conf
-        #
+
         # Если хотя бы один UNKNOWN, то значит ещё не везде ещё скопирован base - выходим.
-        # Если нет ни одного UNKNOWN, значит все так или иначе прошли копирование base - поэтому ищем BASE_SUCCESS
-        # и ставим копирование conf.
-        #
         for host in self.table.model().data.hosts:
             if host.result == TableData.Host.Result.UNKNOWN:
                 return
+        # Если нет ни одного UNKNOWN, значит все так или иначе прошли копирование base - поэтому ищем BASE_SUCCESS
+        # и ставим копирование conf.
         for host in self.table.model().data.hosts:
             if host.result == TableData.Host.Result.BASE_SUCCESS:
-                if self.is_local_idle == True:
-                    self.is_local_idle = False
-                    threading.Thread(target=self.do_copy_conf).start()
-                    return
+                self.is_local_idle = False
+                threading.Thread(target=self.do_copy_conf).start()
+                return
+
+        if not self.is_local_idle:
+            return
 
         # Выполнение pre-скриптов
 
         for host in self.table.model().data.hosts:
             if host.result == TableData.Host.Result.CONF_SUCCESS:
-                if self.is_local_idle == True:
-                    self.is_local_idle = False
-                    threading.Thread(target=self.do_run_pre_script).start()
-                    return
+                self.is_local_idle = False
+                threading.Thread(target=self.do_run_pre_script).start()
+                return
 
         # Проверка md5 ?
 
