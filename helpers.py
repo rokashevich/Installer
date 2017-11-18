@@ -9,6 +9,8 @@ import zipfile
 import subprocess
 
 
+# wmic /node:"vbox-1" /user:"st" /password:"stinstaller" /output:"wmic.txt" process call create "hostname"
+
 # def git_revision():
 #     cmd=['git','log','-n 1','--date=format:%Y.%m.%d-%H:%M','--pretty=format:%ad %ae %s']
 #     revision=''
@@ -29,7 +31,6 @@ import subprocess
 #         revision='UNKNOWN'
 #         out='UNKNOWN'
 #     return[revision,out]
-
 
 def git_revision(path=''):
     r = subprocess.run('git describe --always', stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -67,18 +68,25 @@ def get_path_size(path):
     return total_size
 
 
+def md5sum(dir):
+    # Для win32 использовать certutil
+    pass
+
+
 def copy_from_to(h1, p1, h2, p2, mirror=False):
     # taskkill /s paws-iws-1 /u st /p stinstaller /t /f /im psexesvc.exe
     if sys.platform == 'win32':
-        p = r'/mir' if mirror else ''
+        p = r'/mir' if mirror else r'/e'
         p += ' /r:0'  # /w:5 - ждать секунд, /r - retry раз
+        p += ' /nfl /ndl /njh /njs /nc /ns /np'  # silent
         if h1:
             c = r'PsExec.exe -accepteula -nobanner \\' + h1 + r' -u st -p stinstaller robocopy '+p+' ' + p1 \
                 + r' \\' + h2 + '\\' + p2.replace(':', '$')
         else:
             c = r'robocopy '+p+' ' + p1 + r' \\' + h2 + '\\' + p2.replace(':', '$')
         r = subprocess.run(c, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        print('Cmd='+c+' Return='+str(r.returncode)+' Out='+str(r.stdout)+' Err='+str(r.stderr))
+        print('>cmd='+c)
+        print('<ret='+str(r.returncode) + ' out='+str(r.stdout) + ' err='+str(r.stderr))
         if r.returncode < 8:
             # 16 ***FATAL ERROR***
             # 15 FAIL MISM XTRA COPY
