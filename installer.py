@@ -19,7 +19,7 @@ from PyQt5.QtWidgets import (QApplication, QLineEdit, QHBoxLayout, QVBoxLayout, 
                              QPushButton, QLabel, QGridLayout, QTreeView, QItemDelegate, QComboBox,
                              QStyleOptionComboBox, QStyle, QFileDialog)
 from PyQt5.QtGui import QFont, QIcon
-from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSignal, pyqtSlot, QCoreApplication, QSettings
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import helpers
@@ -453,13 +453,17 @@ class Installer(QWidget):
 
     def on_clicked_button_browse(self):
         if not self.state == Installer.State.PREPARING:
+            settings = QSettings()
+            default_browse_path = settings.value('default_browse_path', r'C:\\', type=str)
             file, _ = QFileDialog.getOpenFileName(self, 'Выберите дистрибутив или укажите '
-                                                        'base.txt в распакованном дистрибутиве', 'c:/')
+                                                        'base.txt в распакованном дистрибутиве', default_browse_path)
             if not file:
                 self.state = Installer.State.DEFAULT
                 return
             else:
                 file = os.path.abspath(file)
+                settings.setValue('default_browse_path', os.path.dirname(file))
+                settings.sync()
 
             threading.Thread(target=self.prepare_distribution, args=(file,)).start()
         else:
@@ -759,6 +763,10 @@ class Installer(QWidget):
 
 
 if __name__ == '__main__':
+    QCoreApplication.setOrganizationName('Installer')
+    QCoreApplication.setOrganizationDomain('Installer')
+    QCoreApplication.setApplicationName('Installer')
+
     app = QApplication(sys.argv)
     ex = Installer()
     sys.exit(app.exec_())
