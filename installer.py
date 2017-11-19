@@ -35,27 +35,38 @@ class Logger(PyQt5.QtCore.QObject):
 logger = Logger()
 
 
+class Host:
+    class Flags:
+        IDLE         = int('00000001', 2)  #0x0001
+        UNKNOWN      = int('00000010', 2)  #0x0004
+        BASE_SUCCESS = int('00000100', 2)  #0x0008
+        CONF_SUCCESS = int('00001000', 2)  #0x0010
+        PRE_SUCCESS  = int('00010000', 2)  #0x0020
+        SUCCESS      = int('00100000', 2)  #0x0040
+        FAILURE      = int('01000000', 2)  #0x0080
+
 class TableData:
     class Host:
-        class State(Enum):
-            IDLE = auto()
-            BUSY = auto()
-
-        class Result(Enum):
-            UNKNOWN = auto()
-            BASE_SUCCESS = auto()  # Выставляется при успешном копировании base
-            CONF_SUCCESS = auto()  # Выставляется при успешном копировании conf
-            PRE_SUCCESS = auto()   # Выставляется при успешном выполнении pre
-            SUCCESS = auto()
-            FAILURE = auto()
+        # class State(Enum):
+        #     IDLE = auto()
+        #     BUSY = auto()
+        #
+        # class Result(Enum):
+        #     UNKNOWN = auto()
+        #     BASE_SUCCESS = auto()  # Выставляется при успешном копировании base
+        #     CONF_SUCCESS = auto()  # Выставляется при успешном копировании conf
+        #     PRE_SUCCESS = auto()   # Выставляется при успешном выполнении pre
+        #     SUCCESS = auto()
+        #     FAILURE = auto()
 
         def __init__(self, hostname):
             self.checked = True
             self.hostname = hostname
             self.message = ''
             self.base_timer = 0
-            self.state = self.State.IDLE
-            self.result = self.Result.UNKNOWN
+            # self.state = self.State.IDLE
+            # self.result = self.Result.UNKNOWN
+            self.flags = Host.Flags.UNKNOWN | Host.Flags.IDLE
 
     def __init__(self, source, destination=''):
         self.source = source
@@ -102,9 +113,9 @@ class TableModel(QAbstractTableModel):
         elif index.column() == 1:  # hostname
             return self.data.hosts[index.row()].hostname
         elif index.column() == 2:  # message
-            return self.data.hosts[index.row()]
+            return self.data.hosts[index.row()].flags
         else:
-            return self.data.hosts[index.row()].result
+            return self.data.hosts[index.row()].flags
 
 
 class Installer(QWidget):
@@ -176,24 +187,37 @@ class Installer(QWidget):
                 PyQt5.QtWidgets.QStyledItemDelegate.__init__(self, parent)
 
             def paint(self, painter, option, index):
-                host = index.data()
-                if host.result == TableData.Host.Result.BASE_SUCCESS:
+                # if host.result == TableData.Host.Result.BASE_SUCCESS:
+                #     text = 'Установлен base'
+                # elif host.result == TableData.Host.Result.CONF_SUCCESS:
+                #     text = 'Установлен base, установлен сonf'
+                # elif host.result == TableData.Host.Result.PRE_SUCCESS:
+                #     text = 'Установлен base, установлен сonf, выполнен pre-скрипт'
+                # elif host.result == TableData.Host.Result.SUCCESS:
+                #     text = 'ОК'
+                # elif host.result == TableData.Host.Result.FAILURE:
+                #     text = 'ОШИБКА'
+                # else:  # UNKNOWN
+                #     if host.base_timer > 0:
+                #         text = 'Копирование base...'
+                #     else:
+                #         text = ''
+                # if host.base_timer > 0:
+                #     text = text + ' (' + helpers.seconds_to_human(host.base_timer) + ')'
+                if index.data() & Host.Flags.UNKNOWN and not index.data() & Host.Flags.IDLE:
+                    text = 'Копирование base...'
+                elif index.data() & Host.Flags.BASE_SUCCESS:
                     text = 'Установлен base'
-                elif host.result == TableData.Host.Result.CONF_SUCCESS:
-                    text = 'Установлен base, установлен сonf'
-                elif host.result == TableData.Host.Result.PRE_SUCCESS:
-                    text = 'Установлен base, установлен сonf, выполнен pre-скрипт'
-                elif host.result == TableData.Host.Result.SUCCESS:
-                    text = 'ОК'
-                elif host.result == TableData.Host.Result.FAILURE:
-                    text = 'ОШИБКА'
-                else:  # UNKNOWN
-                    if host.base_timer > 0:
-                        text = 'Копирование base...'
-                    else:
-                        text = ''
-                if host.base_timer > 0:
-                    text = text + ' (' + helpers.seconds_to_human(host.base_timer) + ')'
+                elif index.data() & Host.Flags.CONF_SUCCESS:
+                    text = 'Установлен base, conf'
+                elif index.data() & Host.Flags.PRE_SUCCESS:
+                    text = 'Установлен base, conf; выполнен pre-скрипт'
+                elif index.data() & Host.Flags.SUCCESS:
+                    text = 'OK'
+                elif index.data() & Host.Flags.FAILURE:
+                    text = 'FAILURE'
+                else:
+                    text = str(index.data())
                 painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignCenter, text)
 
         class ResultDelegate(PyQt5.QtWidgets.QStyledItemDelegate):
@@ -201,24 +225,28 @@ class Installer(QWidget):
                 PyQt5.QtWidgets.QStyledItemDelegate.__init__(self, parent)
 
             def paint(self, painter, option, index):
-                if index.data() == TableData.Host.Result.UNKNOWN:
-                    utf8_symbol = '➤'
-                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(255, 255, 255))
-                elif index.data() == TableData.Host.Result.BASE_SUCCESS:
+                # if index.data() == TableData.Host.Result.UNKNOWN:
+                #     utf8_symbol = '➤'
+                #     painter.fillRect(option.rect, PyQt5.QtGui.QColor(255, 255, 255))
+                # elif index.data() == TableData.Host.Result.BASE_SUCCESS:
+                #     utf8_symbol = '❌'
+                #     painter.fillRect(option.rect, PyQt5.QtGui.QColor(224, 255, 224))
+                # elif index.data() == TableData.Host.Result.CONF_SUCCESS:
+                #     utf8_symbol = '❌'
+                #     painter.fillRect(option.rect, PyQt5.QtGui.QColor(192, 255, 192))
+                # elif index.data() == TableData.Host.Result.PRE_SUCCESS:
+                #     utf8_symbol = '❌'
+                #     painter.fillRect(option.rect, PyQt5.QtGui.QColor(160, 255, 160))
+                # elif index.data() == TableData.Host.Result.SUCCESS:
+                #     utf8_symbol = '➤'
+                #     painter.fillRect(option.rect, PyQt5.QtGui.QColor(128, 255, 128))
+                # else:  # Failure
+                #     utf8_symbol = '➤'
+                #     painter.fillRect(option.rect, PyQt5.QtGui.QColor(255, 128, 128))
+                flags = index.data()
+                utf8_symbol = '➤'
+                if flags & Host.Flags.IDLE:
                     utf8_symbol = '❌'
-                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(224, 255, 224))
-                elif index.data() == TableData.Host.Result.CONF_SUCCESS:
-                    utf8_symbol = '❌'
-                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(192, 255, 192))
-                elif index.data() == TableData.Host.Result.PRE_SUCCESS:
-                    utf8_symbol = '❌'
-                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(160, 255, 160))
-                elif index.data() == TableData.Host.Result.SUCCESS:
-                    utf8_symbol = '➤'
-                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(128, 255, 128))
-                else:  # Failure
-                    utf8_symbol = '➤'
-                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(255, 128, 128))
                 painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignCenter, utf8_symbol)
 
         super().__init__()
@@ -397,8 +425,7 @@ class Installer(QWidget):
         print('Кликнуто в таблице: ряд=' + str(row) + ', столбец=' + str(column))
         if column == 3:  # Правая кнопка индивидуального запуска/останова
             host = self.table.model().data.hosts[index.row()]
-            host.result = TableData.Host.Result.UNKNOWN
-            host.state = TableData.Host.State.IDLE
+            host.flags = Host.Flags.IDLE
             self.worker_needed.emit()
 
     def on_conf_selected(self):  # Выбрали мышкой конфигурацию
@@ -493,7 +520,8 @@ class Installer(QWidget):
 
     def do_copy_base(self, source_host, destination_host):
         def timer():
-            while destination_host.result == TableData.Host.Result.UNKNOWN:
+            #while destination_host.result == TableData.Host.Result.UNKNOWN:
+            while not destination_host.flags & Host.Flags.IDLE:
                 if not threading.main_thread().is_alive():
                     sys.exit()
                 time.sleep(1)
@@ -505,42 +533,51 @@ class Installer(QWidget):
         source_path = self.installation_path.text() if source_host else self.distribution.base
         if helpers.copy_from_to(source_hostname, source_path,
                                 destination_host.hostname, self.installation_path.text(), mirror=True) == 0:
-            r = TableData.Host.Result.BASE_SUCCESS
+            #r = TableData.Host.Result.BASE_SUCCESS
+            #print('Завершено копирование base с '+str(source_hostname)+' на '+str(destination_host.hostname) + ' ОК')
+            destination_host.flags = Host.Flags.BASE_SUCCESS | Host.Flags.IDLE
         else:
-            r = TableData.Host.Result.FAILURE
-        s = TableData.Host.State.IDLE
-
-        m = '    ' if r == TableData.Host.Result.BASE_SUCCESS else '*** '
-        m += 'Копирование base: '
-        m += source_host.hostname if source_host else ''
-        m += '--> '+destination_host.hostname
-        logger.message_appeared.emit(m)
-
-        destination_host.result = r
-        destination_host.state = s
+            #r = TableData.Host.Result.FAILURE
+            #print('Завершено копирование base с '+str(source_hostname)+' на '+str(destination_host.hostname)+' FAILURE')
+            destination_host.flags = Host.Flags.FAILURE | Host.Flags.IDLE
+        #s = TableData.Host.State.IDLE
         if source_host:
-            source_host.state = TableData.Host.State.IDLE
+            source_host.flags = source_host.flags | Host.Flags.IDLE
+
+
+        #m = '    ' if r == TableData.Host.Result.BASE_SUCCESS else '*** '
+        #m += 'Копирование base: '
+        #m += source_host.hostname if source_host else ''
+        #m += '--> '+destination_host.hostname
+        #logger.message_appeared.emit(m)
+
+        #destination_host.result = r
+        #destination_host.state = s
+
         self.worker_needed.emit()
 
     def do_copy_conf(self):
         for host in self.table.model().data.hosts:
-            if host.result == TableData.Host.Result.BASE_SUCCESS:
-                if host.state == TableData.Host.State.IDLE:
-                    host.state = TableData.Host.State.BUSY
-                    conf_copy_result = TableData.Host.Result.CONF_SUCCESS
-                    conf_name = self.configurations[self.configurations_list.currentIndex().row()]
-                    for c in [os.path.join(self.distribution.unpacked_confs, conf_name, 'common'),
-                             os.path.join(self.distribution.unpacked_confs, conf_name, host.hostname)]:
-                        if os.path.exists(c):
-                            if helpers.copy_from_to(None, c, host.hostname, self.installation_path.text()) != 0:
-                                conf_copy_result = TableData.Host.Result.FAILURE
-                                print('*** Ошибка копирования conf --> '+host.hostname)
-                                break
-                    host.result = conf_copy_result
-                    logger.message_appeared.emit(('    ' if conf_copy_result == TableData.Host.Result.CONF_SUCCESS else
-                                                  '*** ') + 'Копирование conf: --> ' + host.hostname)
-                    host.state == TableData.Host.State.IDLE
-                    self.table_changed.emit()
+            #if host.result == TableData.Host.Result.BASE_SUCCESS:
+            #   if host.state == TableData.Host.State.IDLE:
+            #       host.state = TableData.Host.State.BUSY
+            if host.flags & (Host.Flags.BASE_SUCCESS | Host.Flags.IDLE):
+                host.flags = host.flags & ~Host.Flags.IDLE
+                conf_copy_result = Host.Flags.CONF_SUCCESS
+                conf_name = self.configurations[self.configurations_list.currentIndex().row()]
+                for c in [os.path.join(self.distribution.unpacked_confs, conf_name, 'common'),
+                          os.path.join(self.distribution.unpacked_confs, conf_name, host.hostname)]:
+                    if os.path.exists(c):
+                        if helpers.copy_from_to(None, c, host.hostname, self.installation_path.text()) != 0:
+                            conf_copy_result = Host.Flags.FAILURE
+                            print('*** Ошибка копирования conf --> ' + host.hostname)
+                            break
+                #host.result = conf_copy_result
+                #logger.message_appeared.emit(('    ' if conf_copy_result == TableData.Host.Result.CONF_SUCCESS else
+                #                             '*** ') + 'Копирование conf: --> ' + host.hostname)
+                #host.state == TableData.Host.State.IDLE
+                host.flags = host.flags | Host.Flags.IDLE | conf_copy_result
+                self.table_changed.emit()
         self.is_local_idle = True
         self.worker_needed.emit()
 
@@ -553,12 +590,13 @@ class Installer(QWidget):
             self.is_prepare_script_used = True
             s = os.path.join(self.installation_path.text(), 'etc', self.pre_install_scripts_combo.currentText())
             for host in self.table.model().data.hosts:
-                if host.result == TableData.Host.Result.CONF_SUCCESS:
-
+                #if host.result == TableData.Host.Result.CONF_SUCCESS:
+                if host.flags & Host.Flags.CONF_SUCCESS:
                     cmd = r'psexec \\' + host.hostname + ' -u st -p stinstaller ' + s
                     print(cmd)
                     r = subprocess.run(cmd)
-                    host.result = TableData.Host.Result.PRE_SUCCESS if r.returncode == 0 else TableData.Host.Result.FAILURE
+                    #host.result = TableData.Host.Result.PRE_SUCCESS if r.returncode == 0 else TableData.Host.Result.FAILURE
+                    host.flags = host.flags & Host.Flags.PRE_SUCCESS if r.returncode == 0 else host.flags & Host.Flags.FAILURE
                     print('Run=' + cmd + ' Result=' + str(r.returncode))
                     self.table_changed.emit()
         else:
@@ -570,29 +608,49 @@ class Installer(QWidget):
         # Копирование base
         have_source_host = False
         any_base_copy_started = False
+        print('---1')
         for source_host in self.table.model().data.hosts:
-            if source_host.result == TableData.Host.Result.BASE_SUCCESS:
+            #if source_host.result == TableData.Host.Result.BASE_SUCCESS:
+            #print(source_host.flags)
+            #print(Host.Flags.BASE_SUCCESS)
+            #print(source_host.flags & Host.Flags.BASE_SUCCESS)
+
+            if source_host.flags & Host.Flags.BASE_SUCCESS:
+                #print('Найден источник в состоянии BASE_SUCCESS: ' + source_host.hostname)
                 have_source_host = True
-                if source_host.state == TableData.Host.State.IDLE:
+                #if source_host.state == TableData.Host.State.IDLE:
+                if source_host.flags & Host.Flags.IDLE:
                     for destination_host in self.table.model().data.hosts:
-                        if (destination_host.result == TableData.Host.Result.UNKNOWN
-                                and destination_host.state == TableData.Host.State.IDLE):
-                            print('Копирование base с '
-                                  + source_host.hostname + ' на ' + destination_host.hostname)
-                            source_host.state = TableData.Host.State.BUSY
-                            destination_host.state = TableData.Host.State.BUSY
+                        #if (destination_host.result == TableData.Host.Result.UNKNOWN
+                        #        and destination_host.state == TableData.Host.State.IDLE):
+
+                        if destination_host.flags & Host.Flags.UNKNOWN and destination_host.flags & Host.Flags.IDLE:
+                            #print(source_host.hostname + ' ' + str(destination_host.flags))
+                            #print(destination_host.flags)
+                            print(' base copy ' + source_host.hostname + ' -> ' + destination_host.hostname)
+                            #source_host.state = TableData.Host.State.BUSY
+                            # destination_host.state = TableData.Host.State.BUSY
+                            source_host.flags = source_host.flags & ~Host.Flags.IDLE
+                            #print(destination_host.flags)
+                            destination_host.flags = destination_host.flags & ~Host.Flags.IDLE
+                            #print(destination_host.flags)
                             threading.Thread(target=self.do_copy_base, args=(source_host, destination_host)).start()
                             any_base_copy_started = True
                             break
+        print('---2')
         if not have_source_host:
+            print('Первый запуск worker-а')
             for destination_host in self.table.model().data.hosts:
-                if (destination_host.result == TableData.Host.Result.UNKNOWN
-                        and destination_host.state == TableData.Host.State.IDLE):
+                #if (destination_host.result == TableData.Host.Result.UNKNOWN
+                #        and destination_host.state == TableData.Host.State.IDLE):
+                if destination_host.flags & Host.Flags.UNKNOWN and destination_host.flags & Host.Flags.IDLE:
                     print('Первичное копирование base на ' + destination_host.hostname)
-                    destination_host.state = TableData.Host.State.BUSY
+                    #destination_host.state = TableData.Host.State.BUSY
+                    destination_host.flags = destination_host.flags & ~Host.Flags.IDLE
                     threading.Thread(target=self.do_copy_base, args=(None, destination_host)).start()
                     any_base_copy_started = True
                     break
+            print('Выход из worker-а')
         if any_base_copy_started:
             return
 
@@ -602,15 +660,17 @@ class Installer(QWidget):
             return
 
         # Копирование conf
-
+        print('КОНФ!')
         # Если хотя бы один UNKNOWN, то значит ещё не везде ещё скопирован base - выходим.
         for host in self.table.model().data.hosts:
-            if host.result == TableData.Host.Result.UNKNOWN:
+            #if host.result == TableData.Host.Result.UNKNOWN:
+            if host.flags & Host.Flags.UNKNOWN:
                 return
         # Если нет ни одного UNKNOWN, значит все так или иначе прошли копирование base - поэтому ищем BASE_SUCCESS
         # и ставим копирование conf.
         for host in self.table.model().data.hosts:
-            if host.result == TableData.Host.Result.BASE_SUCCESS:
+            #if host.result == TableData.Host.Result.BASE_SUCCESS:
+            if host.flags & Host.Flags.BASE_SUCCESS:
                 self.is_local_idle = False
                 threading.Thread(target=self.do_copy_conf).start()
                 return
@@ -621,7 +681,8 @@ class Installer(QWidget):
         # Выполнение pre-скриптов
 
         for host in self.table.model().data.hosts:
-            if host.result == TableData.Host.Result.CONF_SUCCESS:
+            #if host.result == TableData.Host.Result.CONF_SUCCESS:
+            if host.flags & Host.Flags.CONF_SUCCESS:
                 self.is_local_idle = False
                 threading.Thread(target=self.do_run_pre_script).start()
                 return
@@ -630,14 +691,18 @@ class Installer(QWidget):
 
         # Проверка на ФИНИШ и выключение таймера
         all_success = True
-        success_flag = TableData.Host.Result.BASE_SUCCESS
+        #success_flag = TableData.Host.Result.BASE_SUCCESS
+        success_flag = Host.Flags.BASE_SUCCESS
         if self.is_distribution_with_conf and self.is_prepare_script_used:
-            success_flag = TableData.Host.Result.PRE_SUCCESS
+            #success_flag = TableData.Host.Result.PRE_SUCCESS
+            success_flag = Host.Flags.PRE_SUCCESS
         elif self.is_distribution_with_conf and not self.is_prepare_script_used:
-            success_flag = TableData.Host.Result.CONF_SUCCESS
+            #success_flag = TableData.Host.Result.CONF_SUCCESS
+            success_flag = Host.Flags.CONF_SUCCESS
         for host in self.table.model().data.hosts:
             if host.result == success_flag:
-                host.result = TableData.Host.Result.SUCCESS
+                #host.result = TableData.Host.Result.SUCCESS
+                host.flags = host.flags | Host.Flags.SUCCESS
             else:
                 all_success = False
             self.table_changed.emit()
