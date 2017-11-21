@@ -224,28 +224,27 @@ class Installer(QWidget):
                 PyQt5.QtWidgets.QStyledItemDelegate.__init__(self, parent)
 
             def paint(self, painter, option, index):
-                # if index.data() == TableData.Host.Result.UNKNOWN:
-                #     utf8_symbol = '➤'
-                #     painter.fillRect(option.rect, PyQt5.QtGui.QColor(255, 255, 255))
-                # elif index.data() == TableData.Host.Result.BASE_SUCCESS:
-                #     utf8_symbol = '❌'
-                #     painter.fillRect(option.rect, PyQt5.QtGui.QColor(224, 255, 224))
-                # elif index.data() == TableData.Host.Result.CONF_SUCCESS:
-                #     utf8_symbol = '❌'
-                #     painter.fillRect(option.rect, PyQt5.QtGui.QColor(192, 255, 192))
-                # elif index.data() == TableData.Host.Result.PRE_SUCCESS:
-                #     utf8_symbol = '❌'
-                #     painter.fillRect(option.rect, PyQt5.QtGui.QColor(160, 255, 160))
-                # elif index.data() == TableData.Host.Result.SUCCESS:
-                #     utf8_symbol = '➤'
-                #     painter.fillRect(option.rect, PyQt5.QtGui.QColor(128, 255, 128))
-                # else:  # Failure
-                #     utf8_symbol = '➤'
-                #     painter.fillRect(option.rect, PyQt5.QtGui.QColor(255, 128, 128))
-                flags = index.data()
-                utf8_symbol = '➤'
-                if flags & Host.Flags.IDLE:
+                if not index.data() & Host.Flags.IDLE:
                     utf8_symbol = '❌'
+                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(255, 224, 0))
+                elif index.data() & Host.Flags.BASE_SUCCESS:
+                    utf8_symbol = '❌'
+                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(224, 255, 224))
+                elif index.data() & Host.Flags.CONF_SUCCESS:
+                    utf8_symbol = '❌'
+                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(192, 255, 192))
+                elif index.data() & Host.Flags.PRE_SUCCESS:
+                    utf8_symbol = '❌'
+                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(160, 255, 160))
+                elif index.data() & Host.Flags.SUCCESS:
+                    utf8_symbol = '➤'
+                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(128, 255, 128))
+                elif not index.data() & Host.Flags.UNKNOWN and not index.data() & Host.Flags.SUCCESS:
+                    utf8_symbol = '➤'
+                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(255, 128, 128))
+                else:
+                    utf8_symbol = '➤'
+                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(224, 224, 224))
                 painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignCenter, utf8_symbol)
 
         super().__init__()
