@@ -197,7 +197,7 @@ class Installer(QWidget):
                 else:
                     text = ''
                     color = PyQt5.QtGui.QColor(255, 255, 255)
-                text = host.hostname + ' ' + text
+                text = '➤▶▸►❱➡➔➜➧➫ ✕✖❌✗✘❌ ↻ ◉ ◯ ● ○ ⛳'+host.hostname + ' ' + text
                 painter.fillRect(option.rect, color)
                 painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignVCenter | PyQt5.QtCore.Qt.AlignLeft, text)
 
