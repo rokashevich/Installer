@@ -100,7 +100,7 @@ class TableModel(QAbstractTableModel):
             return 0
 
     def columnCount(self, parent):
-        return 4
+        return 2
 
     def data(self, index, role):
         if not index.isValid():
@@ -109,12 +109,8 @@ class TableModel(QAbstractTableModel):
             return QVariant()
         elif index.column() == 0:  # checked
             return self.data.hosts[index.row()].checked
-        elif index.column() == 1:  # hostname
-            return self.data.hosts[index.row()].hostname
-        elif index.column() == 2:  # message
-            return self.data.hosts[index.row()].flags
-        else:
-            return self.data.hosts[index.row()].flags
+        elif index.column() == 1:  # host
+            return self.data.hosts[index.row()]
 
 
 class Installer(QWidget):
@@ -174,78 +170,36 @@ class Installer(QWidget):
                 utf8_symbol = "⚫" if index.data() else ""
                 painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignCenter, utf8_symbol)
 
-        class HostnameDelegate(PyQt5.QtWidgets.QStyledItemDelegate):
+        class HostDelegate(PyQt5.QtWidgets.QStyledItemDelegate):
             def __init__(self, parent):
                 PyQt5.QtWidgets.QStyledItemDelegate.__init__(self, parent)
 
             def paint(self, painter, option, index):
-                painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignCenter, index.data())
-
-        class MessageDelegate(PyQt5.QtWidgets.QStyledItemDelegate):
-            def __init__(self, parent):
-                PyQt5.QtWidgets.QStyledItemDelegate.__init__(self, parent)
-
-            def paint(self, painter, option, index):
-                # if host.result == TableData.Host.Result.BASE_SUCCESS:
-                #     text = 'Установлен base'
-                # elif host.result == TableData.Host.Result.CONF_SUCCESS:
-                #     text = 'Установлен base, установлен сonf'
-                # elif host.result == TableData.Host.Result.PRE_SUCCESS:
-                #     text = 'Установлен base, установлен сonf, выполнен pre-скрипт'
-                # elif host.result == TableData.Host.Result.SUCCESS:
-                #     text = 'ОК'
-                # elif host.result == TableData.Host.Result.FAILURE:
-                #     text = 'ОШИБКА'
-                # else:  # UNKNOWN
-                #     if host.base_timer > 0:
-                #         text = 'Копирование base...'
-                #     else:
-                #         text = ''
-                # if host.base_timer > 0:
-                #     text = text + ' (' + helpers.seconds_to_human(host.base_timer) + ')'
-                if index.data() & Host.Flags.UNKNOWN and not index.data() & Host.Flags.IDLE:
+                host = index.data()
+                if host.flags & Host.Flags.UNKNOWN and not host.flags & Host.Flags.IDLE:
                     text = 'Копирование base...'
-                elif index.data() & Host.Flags.BASE_SUCCESS:
+                    color = PyQt5.QtGui.QColor(255, 255, 102)
+                elif host.flags & Host.Flags.BASE_SUCCESS:
                     text = 'Установлен base'
-                elif index.data() & Host.Flags.CONF_SUCCESS:
+                    color = PyQt5.QtGui.QColor(204, 255, 153)
+                elif host.flags & Host.Flags.CONF_SUCCESS:
                     text = 'Установлен base, conf'
-                elif index.data() & Host.Flags.PRE_SUCCESS:
+                    color = PyQt5.QtGui.QColor(153, 255, 102)
+                elif host.flags & Host.Flags.PRE_SUCCESS:
                     text = 'Установлен base, conf; выполнен pre-скрипт'
-                elif index.data() & Host.Flags.SUCCESS:
+                    color = PyQt5.QtGui.QColor(102, 255, 51)
+                elif host.flags & Host.Flags.SUCCESS:
                     text = 'OK'
-                elif not index.data() & Host.Flags.UNKNOWN and not index.data() & Host.Flags.SUCCESS:
-                    text = 'FAILURE'
+                    color = PyQt5.QtGui.QColor(0, 153, 0)
+                elif not host.flags & Host.Flags.UNKNOWN and not index.data() & Host.Flags.SUCCESS:
+                    text = 'FAILURE'  #❌➤
+                    color = PyQt5.QtGui.QColor(255, 51, 0)
                 else:
                     text = ''
-                painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignCenter, text)
-
-        class ResultDelegate(PyQt5.QtWidgets.QStyledItemDelegate):
-            def __init__(self, parent):
-                PyQt5.QtWidgets.QStyledItemDelegate.__init__(self, parent)
-
-            def paint(self, painter, option, index):
-                if not index.data() & Host.Flags.IDLE:
-                    utf8_symbol = '❌'
-                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(255, 224, 0))
-                elif index.data() & Host.Flags.BASE_SUCCESS:
-                    utf8_symbol = '❌'
-                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(224, 255, 224))
-                elif index.data() & Host.Flags.CONF_SUCCESS:
-                    utf8_symbol = '❌'
-                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(192, 255, 192))
-                elif index.data() & Host.Flags.PRE_SUCCESS:
-                    utf8_symbol = '❌'
-                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(160, 255, 160))
-                elif index.data() & Host.Flags.SUCCESS:
-                    utf8_symbol = '➤'
-                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(128, 255, 128))
-                elif not index.data() & Host.Flags.UNKNOWN and not index.data() & Host.Flags.SUCCESS:
-                    utf8_symbol = '➤'
-                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(255, 128, 128))
-                else:
-                    utf8_symbol = '➤'
-                    painter.fillRect(option.rect, PyQt5.QtGui.QColor(224, 224, 224))
-                painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignCenter, utf8_symbol)
+                    color = PyQt5.QtGui.QColor(255, 255, 255)
+                text = host.hostname + ' ' + text
+                painter.fillRect(option.rect, color)
+                painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignVCenter | PyQt5.QtCore.Qt.AlignLeft, text)
 
         super().__init__()
 
@@ -258,13 +212,9 @@ class Installer(QWidget):
         self.table = QTableView()
         self.table.setModel(TableModel())
         self.table.setItemDelegateForColumn(0, CheckboxDelegate(self))
-        self.table.setItemDelegateForColumn(1, HostnameDelegate(self))
-        self.table.setItemDelegateForColumn(2, MessageDelegate(self))
-        self.table.setItemDelegateForColumn(3, ResultDelegate(self))
+        self.table.setItemDelegateForColumn(1, HostDelegate(self))
         self.table.horizontalHeader().setSectionResizeMode(0, PyQt5.QtWidgets.QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, PyQt5.QtWidgets.QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, PyQt5.QtWidgets.QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(3, PyQt5.QtWidgets.QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(1, PyQt5.QtWidgets.QHeaderView.Stretch)
         self.table.setFocusPolicy(PyQt5.QtCore.Qt.NoFocus)                          # Отключение выделения ячеек
         self.table.setSelectionMode(PyQt5.QtWidgets.QAbstractItemView.NoSelection)  # при нажатии
         self.table.verticalHeader().setVisible(False)    # Отключение нумерации
