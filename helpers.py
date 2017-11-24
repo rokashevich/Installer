@@ -11,6 +11,8 @@ import subprocess
 
 # wmic /node:"vbox-1" /user:"st" /password:"stinstaller" /output:"wmic.txt" process call create "hostname"
 
+# ➤▶▸►❱➡➔➜➧➫ ✕✖❌✗✘❌ ↻ ◉ ◯ ● ○ ⛳
+
 # def git_revision():
 #     cmd=['git','log','-n 1','--date=format:%Y.%m.%d-%H:%M','--pretty=format:%ad %ae %s']
 #     revision=''
