@@ -177,7 +177,7 @@ class Installer(QWidget):
             def paint(self, painter, option, index):
                 host = index.data()
                 if host.flags & Host.Flags.UNKNOWN and not host.flags & Host.Flags.IDLE:
-                    text = 'Копирование base...'
+                    text = '❌' +host.hostname+ 'Копирование base...'
                     color = PyQt5.QtGui.QColor(255, 255, 102)
                 elif host.flags & Host.Flags.BASE_SUCCESS:
                     text = 'Установлен base'
@@ -195,11 +195,18 @@ class Installer(QWidget):
                     text = 'FAILURE'  #❌➤
                     color = PyQt5.QtGui.QColor(255, 51, 0)
                 else:
-                    text = ''
+                    text = '➤' + host.hostname + ': -'
                     color = PyQt5.QtGui.QColor(255, 255, 255)
-                text = '➤▶▸►❱➡➔➜➧➫ ✕✖❌✗✘❌ ↻ ◉ ◯ ● ○ ⛳'+host.hostname + ' ' + text
-                painter.fillRect(option.rect, color)
-                painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignVCenter | PyQt5.QtCore.Qt.AlignLeft, text)
+                #painter.fillRect(option.rect, color)
+                #painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignVCenter | PyQt5.QtCore.Qt.AlignLeft, text)
+                doc = PyQt5.QtGui.QTextDocument()
+                doc.setHtml('<b>aaa</b>aaa')
+                painter.save()
+                option.widget.style().drawControl(QStyle.CE_ItemViewItem, option, painter)
+                painter.translate(option.rect.left(), option.rect.top())
+                clip = PyQt5.QtCore.QRectF(0,0,option.rect.width(), option.rect.height())
+                doc.drawContents(painter, clip)
+                painter.restore()
 
         super().__init__()
 
@@ -274,6 +281,7 @@ class Installer(QWidget):
         # Документация по стилизации Qt: http://doc.qt.io/qt-5/stylesheet-reference.html
         self.setWindowIcon(QIcon('installer.png'))
         self.console.setStyleSheet("font-family: Consolas")
+        #self.setStyleSheet("font-family: monospace")
 
         self.show()
 
