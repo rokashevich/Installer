@@ -207,7 +207,6 @@ class Installer(QWidget):
                 painter.save()
                 font = painter.font()
                 font.setPointSize(font.pointSize() * 1.5)
-                #font.setWeight(PyQt5.QtGui.QFont.Bold)
                 painter.setFont(font)
                 painter.fillRect(option.rect, color)
                 painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignVCenter | PyQt5.QtCore.Qt.AlignLeft, text)
@@ -256,7 +255,7 @@ class Installer(QWidget):
         self.installation_path = QLineEdit()
         self.pre_install_scripts_combo = PyQt5.QtWidgets.QComboBox()
         self.pre_install_scripts_combo.addItem("")
-        self.button_console = QPushButton('📃 Консоль')
+        self.button_console = QPushButton('📜 Консоль')
         self.button_start_stop = QPushButton('➤ Старт')
 
         self.stacked = PyQt5.QtWidgets.QStackedWidget()
@@ -286,7 +285,6 @@ class Installer(QWidget):
         # Документация по стилизации Qt: http://doc.qt.io/qt-5/stylesheet-reference.html
         self.setWindowIcon(QIcon('installer.png'))
         self.console.setStyleSheet("font-family: Consolas")
-        #self.table.setStyleSheet("font-size:16pt;")
 
         self.show()
 
@@ -476,7 +474,7 @@ class Installer(QWidget):
             self.button_console.setText('💻 Таблица')
             self.stacked.setCurrentIndex(1)
         else:
-            self.button_console.setText('📃 Консоль')
+            self.button_console.setText('📜 Консоль')
             self.stacked.setCurrentIndex(0)
 
     def do_copy_base(self, source_host, destination_host):
