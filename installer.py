@@ -169,20 +169,21 @@ class Installer(QWidget):
             def paint(self, painter, option, index):
                 color = "#000" if index.data().checked else "#ccc"
                 painter.save()
+                font = painter.font()
+                font.setPointSize(font.pointSize() * 1.5)
+                painter.setFont(font)
                 painter.setPen(PyQt5.QtGui.QPen(PyQt5.QtGui.QColor(color)))
-                painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignCenter, str(index.row()+1))
+                painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignVCenter | PyQt5.QtCore.Qt.AlignCenter, str(index.row()+1))
                 painter.restore()
 
-        class HostDelegate(PyQt5.QtWidgets.QStyledItemDelegate):
+        class SecondColumnDelegate(PyQt5.QtWidgets.QStyledItemDelegate):
             def __init__(self, parent):
                 PyQt5.QtWidgets.QStyledItemDelegate.__init__(self, parent)
 
             def paint(self, painter, option, index):
-                painter.setRenderHint(PyQt5.QtGui.QPainter.Antialiasing)
-                painter.setRenderHint(PyQt5.QtGui.QPainter.HighQualityAntialiasing)
                 host = index.data()
                 if host.flags & Host.Flags.UNKNOWN and not host.flags & Host.Flags.IDLE:
-                    text = '❌' +host.hostname+ 'Копирование base...'
+                    text = 'Копирование base...'
                     color = PyQt5.QtGui.QColor(255, 255, 102)
                 elif host.flags & Host.Flags.BASE_SUCCESS:
                     text = 'Установлен base'
@@ -197,15 +198,20 @@ class Installer(QWidget):
                     text = 'OK'
                     color = PyQt5.QtGui.QColor(0, 153, 0)
                 elif not host.flags & Host.Flags.UNKNOWN and not index.data() & Host.Flags.SUCCESS:
-                    text = 'FAILURE'  #❌➤
+                    text = 'FAILURE'
                     color = PyQt5.QtGui.QColor(255, 51, 0)
                 else:
-                    text = host.hostname + ''
-                    #font = painter.font().setStretch(50)
-                    #text = current_font.f
+                    text = ''
                     color = PyQt5.QtGui.QColor(255, 255, 255)
+                text = '  ' + host.hostname + '    ' + text
+                painter.save()
+                font = painter.font()
+                font.setPointSize(font.pointSize() * 1.5)
+                #font.setWeight(PyQt5.QtGui.QFont.Bold)
+                painter.setFont(font)
                 painter.fillRect(option.rect, color)
                 painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignVCenter | PyQt5.QtCore.Qt.AlignLeft, text)
+                painter.restore()
 
         super().__init__()
 
@@ -218,7 +224,7 @@ class Installer(QWidget):
         self.table = QTableView()
         self.table.setModel(TableModel())
         self.table.setItemDelegateForColumn(0, FirstColumnDelegate(self))
-        self.table.setItemDelegateForColumn(1, HostDelegate(self))
+        self.table.setItemDelegateForColumn(1, SecondColumnDelegate(self))
         self.table.horizontalHeader().setSectionResizeMode(0, PyQt5.QtWidgets.QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, PyQt5.QtWidgets.QHeaderView.Stretch)
         self.table.setFocusPolicy(PyQt5.QtCore.Qt.NoFocus)                          # Отключение выделения ячеек
@@ -280,7 +286,7 @@ class Installer(QWidget):
         # Документация по стилизации Qt: http://doc.qt.io/qt-5/stylesheet-reference.html
         self.setWindowIcon(QIcon('installer.png'))
         self.console.setStyleSheet("font-family: Consolas")
-        #self.table.setStyleSheet("font-weight: bold;")
+        #self.table.setStyleSheet("font-size:16pt;")
 
         self.show()
 
