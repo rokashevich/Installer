@@ -512,13 +512,14 @@ class Installer(QWidget):
             for host in self.table.model().data.hosts:
                 if host.flags & Host.Flags.CONF_SUCCESS:
                     cmd = r'psexec \\' + host.hostname + ' -u st -p stinstaller ' + s
-                    print(cmd)
                     r = subprocess.run(cmd)
-                    host.flags = host.flags | Host.Flags.PRE_SUCCESS if r.returncode == 0 else host.flags & ~Host.Flags.SUCCESS
-                    print('Run=' + cmd + ' Result=' + str(r.returncode))
+                    if r.returncode:
+                        host.flags = Host.Flags.IDLE & ~Host.Flags.SUCCESS
+                        logger.message_appeared.emit('*** Ошибка выполнения pre-скрипта: command=%s returncode=%d'
+                                                     % (cmd, r.returncode))
+                    else:
+                        host.flags = Host.Flags.IDLE | Host.Flags.PRE_SUCCESS
                     self.table_changed.emit()
-        else:
-            print('No prepare script - skip')
         self.is_local_idle = True
         self.worker_needed.emit()
 
@@ -587,12 +588,13 @@ class Installer(QWidget):
             success_flag = Host.Flags.PRE_SUCCESS
         elif self.is_distribution_with_conf and not self.is_prepare_script_used:
             success_flag = Host.Flags.CONF_SUCCESS
+        success_flag = Host.Flags.IDLE | success_flag
         for host in self.table.model().data.hosts:
-            if host.result == success_flag:
-                host.flags = host.flags | Host.Flags.SUCCESS
+            if host.flags == success_flag:
+                host.flags = Host.Flags.IDLE | Host.Flags.SUCCESS
+                self.table_changed.emit()
             else:
                 all_success = False
-            self.table_changed.emit()
         if all_success:
             self.overall_timer = -self.overall_timer
             logger.message_appeared.emit('ФИНИШ')
