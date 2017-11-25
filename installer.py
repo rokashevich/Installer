@@ -170,31 +170,34 @@ class Installer(QWidget):
                 host = index.data()
                 if host.flags & Host.Flags.UNKNOWN and not host.flags & Host.Flags.IDLE:
                     text = 'Копирование base...'
-                    color = PyQt5.QtGui.QColor(255, 255, 102)
+                    color = '#f4f928'
                 elif host.flags & Host.Flags.BASE_SUCCESS:
                     text = 'Установлен base'
-                    color = PyQt5.QtGui.QColor(204, 255, 153)
+                    color = '#c5f31f'
                 elif host.flags & Host.Flags.CONF_SUCCESS:
                     text = 'Установлен base, conf'
-                    color = PyQt5.QtGui.QColor(153, 255, 102)
+                    color = '#94ed17'
                 elif host.flags & Host.Flags.PRE_SUCCESS:
                     text = 'Установлен base, conf; выполнен pre-скрипт'
-                    color = PyQt5.QtGui.QColor(102, 255, 51)
+                    color = '#63e60f'
+                #elif host.flags & Host.Flags.MD5_SUCCESS:
+                #    text = 'Установлен base, conf; выполнен pre-скрипт'
+                #    color = '#32e007'
                 elif host.flags & Host.Flags.SUCCESS:
                     text = 'OK'
-                    color = PyQt5.QtGui.QColor(0, 153, 0)
+                    color = '#00da00'
                 elif not host.flags & Host.Flags.UNKNOWN and not host.flags & Host.Flags.SUCCESS:
                     text = 'FAILURE'
-                    color = PyQt5.QtGui.QColor(255, 51, 0)
+                    color = '#ff3300'
                 else:
                     text = ''
-                    color = PyQt5.QtGui.QColor(255, 255, 255)
+                    color = '#ffffff'
                 text = '  ' + host.hostname + '    ' + text
                 painter.save()
                 font = painter.font()
                 font.setPointSize(font.pointSize() * 1.5)
                 painter.setFont(font)
-                painter.fillRect(option.rect, color)
+                painter.fillRect(option.rect, PyQt5.QtGui.QColor(color))
                 painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignVCenter | PyQt5.QtCore.Qt.AlignLeft, text)
                 painter.restore()
 
