@@ -88,8 +88,7 @@ def copy_from_to(h1, p1, h2, p2, mirror=False):
             c = r'robocopy '+p+' ' + p1 + r' \\' + h2 + '\\' + p2.replace(':', '$')
         time.sleep(1)
         r = subprocess.run(c, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        #print('>cmd='+c)
-        #print('<ret='+str(r.returncode) + ' out='+str(r.stdout) + ' err='+str(r.stderr))
+        #print(' cmd='+c+' ret='+str(r.returncode) + ' out='+str(r.stdout) + ' err='+str(r.stderr))
         if r.returncode < 8:
             # 16 ***FATAL ERROR***
             # 15 FAIL MISM XTRA COPY
@@ -108,7 +107,7 @@ def copy_from_to(h1, p1, h2, p2, mirror=False):
             #  2 XTRA OK
             #  1 COPY OK
             #  0 --no change--
-            return 0
-        return 1
+            return ''
+        return 'command=%s returncode=%d stdout=%s stderr=%s' % (c, r.returncode, r.stdout, r.stderr)
     else:
         sys.exit('sys.platform != win32')

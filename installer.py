@@ -61,7 +61,6 @@ class TableData:
         def __init__(self, hostname):
             self.checked = True
             self.hostname = hostname
-            self.message = ''
             self.base_timer = 0
             # self.state = self.State.IDLE
             # self.result = self.Result.UNKNOWN
@@ -197,7 +196,7 @@ class Installer(QWidget):
                 elif host.flags & Host.Flags.SUCCESS:
                     text = 'OK'
                     color = PyQt5.QtGui.QColor(0, 153, 0)
-                elif not host.flags & Host.Flags.UNKNOWN and not index.data() & Host.Flags.SUCCESS:
+                elif not host.flags & Host.Flags.UNKNOWN and not host.flags & Host.Flags.SUCCESS:
                     text = 'FAILURE'
                     color = PyQt5.QtGui.QColor(255, 51, 0)
                 else:
@@ -217,8 +216,7 @@ class Installer(QWidget):
         self.version = open('version.txt').read() if os.path.exists('version.txt') else 'DEV'
 
         self.messages = []
-        self.console = PyQt5.QtWidgets.QListView()
-        self.console.setModel(PyQt5.QtCore.QStringListModel(self.messages))
+        self.console = PyQt5.QtWidgets.QTextBrowser()
         
         self.table = QTableView()
         self.table.setModel(TableModel())
@@ -305,9 +303,8 @@ class Installer(QWidget):
         self.window_title_changed.emit()
 
     def on_message_appeared(self, message):
-        self.messages.append(message)
-        self.console.setModel(PyQt5.QtCore.QStringListModel(self.messages))
-        
+        print(message)
+        self.console.append(message)
 
     def on_row_changed(self, row):
         self.table.model().updateRow(row)
@@ -490,15 +487,17 @@ class Installer(QWidget):
 
         source_hostname = source_host.hostname if source_host else None
         source_path = self.installation_path.text() if source_host else self.distribution.base
-        if helpers.copy_from_to(source_hostname, source_path,
-                                destination_host.hostname, self.installation_path.text(), mirror=True) == 0:
+        r = helpers.copy_from_to(source_hostname, source_path, destination_host.hostname, self.installation_path.text(),
+                                 mirror=True)
+        if r:
             #r = TableData.Host.Result.BASE_SUCCESS
             #print('Завершено копирование base с '+str(source_hostname)+' на '+str(destination_host.hostname) + ' ОК')
-            destination_host.flags = Host.Flags.BASE_SUCCESS | Host.Flags.IDLE
+            destination_host.flags = Host.Flags.IDLE & ~Host.Flags.SUCCESS
         else:
             #r = TableData.Host.Result.FAILURE
             #print('Завершено копирование base с '+str(source_hostname)+' на '+str(destination_host.hostname)+' FAILURE')
-            destination_host.flags = Host.Flags.IDLE & ~Host.Flags.SUCCESS
+            destination_host.flags = Host.Flags.BASE_SUCCESS | Host.Flags.IDLE
+
         #s = TableData.Host.State.IDLE
         if source_host:
             source_host.flags = source_host.flags | Host.Flags.IDLE
@@ -527,21 +526,15 @@ class Installer(QWidget):
                 for c in [os.path.join(self.distribution.unpacked_confs, conf_name, 'common'),
                           os.path.join(self.distribution.unpacked_confs, conf_name, host.hostname)]:
                     if os.path.exists(c):
-                        if helpers.copy_from_to(None, c, host.hostname, self.installation_path.text()) != 0:
-                            success = False
-                            print('*** Ошибка копирования conf --> ' + host.hostname)
+                        r = helpers.copy_from_to(None, c, host.hostname, self.installation_path.text())
+                        if r:
+                            logger.message_appeared.emit('*** Ошибка копирования conf: ' + r)
                             break
                 #host.result = conf_copy_result
                 #logger.message_appeared.emit(('    ' if conf_copy_result == TableData.Host.Result.CONF_SUCCESS else
                 #                             '*** ') + 'Копирование conf: --> ' + host.hostname)
                 #host.state == TableData.Host.State.IDLE
-                if success:
-                    print('success')
-                    host.flags = Host.Flags.IDLE | Host.Flags.CONF_SUCCESS
-                else:
-                    print('fail')
-                    host.flags = Host.Flags.IDLE & ~Host.Flags.SUCCESS
-
+                host.flags = Host.Flags.IDLE & ~Host.Flags.SUCCESS if r else Host.Flags.IDLE | Host.Flags.CONF_SUCCESS
                 self.table_changed.emit()
         self.is_local_idle = True
         self.worker_needed.emit()
@@ -573,7 +566,6 @@ class Installer(QWidget):
         # Копирование base
         have_source_host = False
         any_base_copy_started = False
-        print('---1')
         for source_host in self.table.model().data.hosts:
             #if source_host.result == TableData.Host.Result.BASE_SUCCESS:
             #print(source_host.flags)
@@ -602,7 +594,6 @@ class Installer(QWidget):
                             threading.Thread(target=self.do_copy_base, args=(source_host, destination_host)).start()
                             any_base_copy_started = True
                             break
-        print('---2')
         if not have_source_host:
             print('Первый запуск worker-а')
             for destination_host in self.table.model().data.hosts:
@@ -637,7 +628,6 @@ class Installer(QWidget):
             #if host.result == TableData.Host.Result.BASE_SUCCESS:
             if host.flags & Host.Flags.BASE_SUCCESS:
                 self.is_local_idle = False
-                print('CONF -> '+host.hostname)
                 threading.Thread(target=self.do_copy_conf).start()
                 return
 
