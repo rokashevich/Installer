@@ -108,7 +108,7 @@ class TableModel(QAbstractTableModel):
         elif role != Qt.DisplayRole:
             return QVariant()
         elif index.column() == 0:  # checked
-            return self.data.hosts[index.row()].checked
+            return self.data.hosts[index.row()]
         elif index.column() == 1:  # host
             return self.data.hosts[index.row()]
 
@@ -162,19 +162,24 @@ class Installer(QWidget):
     window_title_changed = pyqtSignal()
     
     def __init__(self):
-        class CheckboxDelegate(PyQt5.QtWidgets.QStyledItemDelegate):
+        class FirstColumnDelegate(PyQt5.QtWidgets.QStyledItemDelegate):
             def __init__(self, parent):
                 PyQt5.QtWidgets.QStyledItemDelegate.__init__(self, parent)
 
             def paint(self, painter, option, index):
-                utf8_symbol = "⚫" if index.data() else ""
-                painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignCenter, utf8_symbol)
+                color = "#000" if index.data().checked else "#ccc"
+                painter.save()
+                painter.setPen(PyQt5.QtGui.QPen(PyQt5.QtGui.QColor(color)))
+                painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignCenter, str(index.row()+1))
+                painter.restore()
 
         class HostDelegate(PyQt5.QtWidgets.QStyledItemDelegate):
             def __init__(self, parent):
                 PyQt5.QtWidgets.QStyledItemDelegate.__init__(self, parent)
 
             def paint(self, painter, option, index):
+                painter.setRenderHint(PyQt5.QtGui.QPainter.Antialiasing)
+                painter.setRenderHint(PyQt5.QtGui.QPainter.HighQualityAntialiasing)
                 host = index.data()
                 if host.flags & Host.Flags.UNKNOWN and not host.flags & Host.Flags.IDLE:
                     text = '❌' +host.hostname+ 'Копирование base...'
@@ -195,18 +200,12 @@ class Installer(QWidget):
                     text = 'FAILURE'  #❌➤
                     color = PyQt5.QtGui.QColor(255, 51, 0)
                 else:
-                    text = '➤' + host.hostname + ': -'
+                    text = host.hostname + ''
+                    #font = painter.font().setStretch(50)
+                    #text = current_font.f
                     color = PyQt5.QtGui.QColor(255, 255, 255)
-                #painter.fillRect(option.rect, color)
-                #painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignVCenter | PyQt5.QtCore.Qt.AlignLeft, text)
-                doc = PyQt5.QtGui.QTextDocument()
-                doc.setHtml('<b>aaa</b>aaa')
-                painter.save()
-                option.widget.style().drawControl(QStyle.CE_ItemViewItem, option, painter)
-                painter.translate(option.rect.left(), option.rect.top())
-                clip = PyQt5.QtCore.QRectF(0,0,option.rect.width(), option.rect.height())
-                doc.drawContents(painter, clip)
-                painter.restore()
+                painter.fillRect(option.rect, color)
+                painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignVCenter | PyQt5.QtCore.Qt.AlignLeft, text)
 
         super().__init__()
 
@@ -218,7 +217,7 @@ class Installer(QWidget):
         
         self.table = QTableView()
         self.table.setModel(TableModel())
-        self.table.setItemDelegateForColumn(0, CheckboxDelegate(self))
+        self.table.setItemDelegateForColumn(0, FirstColumnDelegate(self))
         self.table.setItemDelegateForColumn(1, HostDelegate(self))
         self.table.horizontalHeader().setSectionResizeMode(0, PyQt5.QtWidgets.QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, PyQt5.QtWidgets.QHeaderView.Stretch)
@@ -281,7 +280,7 @@ class Installer(QWidget):
         # Документация по стилизации Qt: http://doc.qt.io/qt-5/stylesheet-reference.html
         self.setWindowIcon(QIcon('installer.png'))
         self.console.setStyleSheet("font-family: Consolas")
-        #self.setStyleSheet("font-family: monospace")
+        #self.table.setStyleSheet("font-weight: bold;")
 
         self.show()
 
