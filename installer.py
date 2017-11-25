@@ -488,7 +488,6 @@ class Installer(QWidget):
         for host in self.table.model().data.hosts:
             if host.flags & (Host.Flags.BASE_SUCCESS | Host.Flags.IDLE):
                 host.flags = host.flags & ~Host.Flags.IDLE
-                success = True
                 conf_name = self.configurations[self.configurations_list.currentIndex().row()]
                 for c in [os.path.join(self.distribution.unpacked_confs, conf_name, 'common'),
                           os.path.join(self.distribution.unpacked_confs, conf_name, host.hostname)]:
