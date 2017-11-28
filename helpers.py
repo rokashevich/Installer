@@ -72,6 +72,7 @@ def get_path_size(path):
 
 def md5sum(dir):
     # Для win32 использовать certutil
+    # certutil.exe -hashfile D:\Temp\test-distro-4\base\scripts\python\3.6.2\_ssl.pyd MD5
     pass
 
 
