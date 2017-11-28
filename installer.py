@@ -36,12 +36,13 @@ logger = Logger()
 
 class Host:
     class Flags:
-        IDLE         = int('00000001', 2)  #0x0001
-        UNKNOWN      = int('00000010', 2)  #0x0004
-        BASE_SUCCESS = int('00000100', 2)  #0x0008
-        CONF_SUCCESS = int('00001000', 2)  #0x0010
-        PRE_SUCCESS  = int('00010000', 2)  #0x0020
-        SUCCESS      = int('00100000', 2)  #0x0040
+        IDLE         = int('00000001', 2)
+        UNKNOWN      = int('00000010', 2)
+        BASE_SUCCESS = int('00000100', 2)
+        CONF_SUCCESS = int('00001000', 2)
+        PRE_SUCCESS  = int('00010000', 2)
+        MD5_SUCCESS  = int('00100000', 2)
+        SUCCESS      = int('01000000', 2)
 
 class TableData:
     class Host:
@@ -526,6 +527,9 @@ class Installer(QWidget):
         self.is_local_idle = True
         self.worker_needed.emit()
 
+    def do_check_md5(self, host):
+        pass
+
     def worker(self):
         # Копирование base
         have_source_host = False
@@ -582,16 +586,21 @@ class Installer(QWidget):
                 threading.Thread(target=self.do_run_pre_script).start()
                 return
 
-        # Проверка md5 ?
-
-        # Проверка на ФИНИШ и выключение таймера
-        all_success = True
+        # В зависимости от типа дистрибутива рассчитываем признак успеха установки (до проверки!)
         success_flag = Host.Flags.BASE_SUCCESS
         if self.is_distribution_with_conf and self.is_prepare_script_used:
             success_flag = Host.Flags.PRE_SUCCESS
         elif self.is_distribution_with_conf and not self.is_prepare_script_used:
             success_flag = Host.Flags.CONF_SUCCESS
         success_flag = Host.Flags.IDLE | success_flag
+
+        # Проверка md5 и выставление флага общего успеха
+        for host in self.table.model().data.hosts:
+            if host.flags == success_flag:
+                threading.Thread(target=self.do_check_md5(), args=host).start()
+
+        # Проверка на ФИНИШ и выключение таймера
+        all_success = True
         for host in self.table.model().data.hosts:
             if host.flags == success_flag:
                 host.flags = Host.Flags.IDLE | Host.Flags.SUCCESS
