@@ -50,6 +50,8 @@ def seconds_to_human(seconds):
         human += str(m)+'\''
     if s:
         human += str(s)+'\"'
+    else:
+        human += '0\"'
     return human
 
 

@@ -63,8 +63,8 @@ class TableData:
         def __init__(self, hostname):
             self.checked = True
             self.hostname = hostname
-            self.base_timer = 0
-            self.verify_timer = 0
+            self.base_timer = -1
+            self.verify_timer = -1
             self.overall_timer = 0
             self.base_state = Host.State.UNKNOWN
             self.conf_state = Host.State.UNKNOWN
@@ -496,9 +496,9 @@ class Installer(QWidget):
             while destination_host.state == Host.State.BASE_INSTALLING_DESTINATION:
                 if not threading.main_thread().is_alive():
                     sys.exit()
-                time.sleep(1)
                 destination_host.base_timer += 1
                 self.table_changed.emit()
+                time.sleep(1)
         threading.Thread(target=timer).start()
 
         source_hostname = source_host.hostname if source_host else None
@@ -567,6 +567,15 @@ class Installer(QWidget):
         # 4. Ожидаем появления \\host.hostname\C:\Windows\Temp\timestamp.txt с результатом выполнения предыдущего пункта
 
         host.state = host.md5_state = Host.State.MD5_RUNNING
+
+        def timer():
+            while host.state == Host.State.MD5_RUNNING:
+                if not threading.main_thread().is_alive():
+                    sys.exit()
+                host.verify_timer += 1
+                self.table_changed.emit()
+                time.sleep(1)
+        threading.Thread(target=timer).start()
 
         # 1 TODO: потом сделаю
 
