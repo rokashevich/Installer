@@ -2,6 +2,7 @@
 
 # https://www.utf8icons.com/
 
+import datetime
 import os
 import sys
 import glob
@@ -32,6 +33,7 @@ class Logger(PyQt5.QtCore.QObject):
 
 
 logger = Logger()
+timestamp = datetime.datetime.now()
 
 
 class Host:
@@ -62,6 +64,8 @@ class TableData:
             self.checked = True
             self.hostname = hostname
             self.base_timer = 0
+            self.verify_timer = 0
+            self.overall_timer = 0
             self.base_state = Host.State.UNKNOWN
             self.conf_state = Host.State.UNKNOWN
             self.pre_state = Host.State.UNKNOWN
@@ -184,22 +188,35 @@ class Installer(QWidget):
             def paint(self, painter, option, index):
                 host = index.data()
                 if host.state == Host.State.BASE_INSTALLING_DESTINATION:
-                    text = 'Копирование base...'
+                    text = 'Копирование base... %s' % helpers.seconds_to_human(host.base_timer)
                     color = '#f4f928'
                 elif host.state == Host.State.BASE_SUCCESS or host.state == Host.State.BASE_INSTALLING_SOURCE:
-                    text = 'Установлен base'
+                    text = 'Установлен base %s' % helpers.seconds_to_human(host.base_timer)
                     color = '#c5f31f'
                 elif host.state == Host.State.CONF_SUCCESS:
-                    text = 'Установлен base, conf'
+                    text = 'Установлен base %s, conf' % helpers.seconds_to_human(host.base_timer)
                     color = '#94ed17'
                 elif host.state == Host.State.PRE_SUCCESS:
                     text = 'Установлен base, conf; выполнен pre-скрипт'
                     color = '#63e60f'
+                elif host.state == Host.State.MD5_RUNNING:
+                    text = 'Установлен base %s' % helpers.seconds_to_human(host.base_timer)
+                    if host.conf_state == Host.State.CONF_SUCCESS:
+                        text += '; conf'
+                    if host.pre_state == Host.State.PRE_SUCCESS:
+                        text += '; pre-скрипт выполнен'
+                    text += '; проверка md5... %s' % helpers.seconds_to_human(host.verify_timer)
+                    color = '#63e60f'
                 elif host.state == Host.State.SUCCESS:
-                    text = 'OK'
-                    color = '#00da00'
+                    text = 'Установлен base %s' % helpers.seconds_to_human(host.base_timer)
+                    if host.conf_state == Host.State.CONF_SUCCESS:
+                        text += '; conf'
+                    if host.pre_state == Host.State.PRE_SUCCESS:
+                        text += '; pre-скрипт выполнен'
+                    text += '; проверка md5 %s - ОК' % helpers.seconds_to_human(host.verify_timer)
+                    color = '#00eb00'
                 elif host.state == Host.State.FAILURE:
-                    text = 'FAILURE'
+                    text = 'ОШИБКА'
                     color = '#ff3300'
                 else:
                     text = ''
@@ -242,7 +259,6 @@ class Installer(QWidget):
         self.prepare_error_message = ''
         self.prepare_process_download = None
         self.prepare_process_unzip = None
-        self.is_local_idle = True
         self.is_distribution_with_conf = False
         self.is_prepare_script_used = False
         
@@ -490,9 +506,9 @@ class Installer(QWidget):
         r = helpers.copy_from_to(source_hostname, source_path, destination_host.hostname, self.installation_path.text(),
                                  mirror=True)
         if r:
-            destination_host.state = Host.State.FAILURE
+            destination_host.state = destination_host.base_state = Host.State.FAILURE
         else:
-            destination_host.state = Host.State.BASE_SUCCESS
+            destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
 
         if source_host:
             source_host.state = Host.State.BASE_SUCCESS
@@ -511,9 +527,11 @@ class Installer(QWidget):
                         if r:
                             logger.message_appeared.emit('*** Ошибка копирования conf: ' + r)
                             break
-                host.state = Host.State.FAILURE if r else Host.State.CONF_SUCCESS
+                if r:
+                    host.state = host.conf_state = Host.State.FAILURE
+                else:
+                    host.state = host.conf_state = Host.State.CONF_SUCCESS
                 self.table_changed.emit()
-        self.is_local_idle = True
         self.worker_needed.emit()
 
     def do_run_pre_script(self):
@@ -530,17 +548,69 @@ class Installer(QWidget):
                     cmd = r'psexec \\' + host.hostname + ' -u st -p stinstaller ' + s
                     r = subprocess.run(cmd)
                     if r.returncode:
-                        host.state = Host.State.FAILURE
+                        host.state = host.pre_state = Host.State.FAILURE
                         logger.message_appeared.emit('*** Ошибка выполнения pre-скрипта: command=%s returncode=%d'
                                                      % (cmd, r.returncode))
                     else:
-                        host.state = Host.State.PRE_SUCCESS
+                        host.state = host.pre_state = Host.State.PRE_SUCCESS
                     self.table_changed.emit()
-        self.is_local_idle = True
         self.worker_needed.emit()
 
-    def do_check_md5(self, host):
-        pass
+    def do_verify(self, host):
+        # Проверка установки на одном хосте (host)
+        #
+        # ПРИНЦИП РАБОТЫ
+        #
+        # 1. Сравниваем удалённый base.txt с локальным, что они одинаковые (по md5)
+        # 2. Копируем verify.bat на удалённый хост в C:\Windows\Temp с уникальным именем (используем timestamp)
+        # 3. Запускаем на удалённом хосте "C:\Windows\Temp\timestamp.bat self.installation_path.text()"
+        # 4. Ожидаем появления \\host.hostname\C:\Windows\Temp\timestamp.txt с результатом выполнения предыдущего пункта
+
+        host.state = host.md5_state = Host.State.MD5_RUNNING
+
+        # 1 TODO: потом сделаю
+
+        # 2
+        u = timestamp.strftime('%Y%m%d%H%M%S')  # unique
+        r = '\\\\%s\\C$\\' % host.hostname  # remote
+        l = 'C:\\'  # local
+        c = r'Windows\Temp\%s' % u  # constant
+        try:
+            shutil.copyfile('verify.bat', r + c + '.bat')
+        except:
+            logger.message_appeared.emit('*** Ошибка копирования verify.bat на %s' % host.hostname)
+            host.state = host.md5_state = Host.State.FAILURE
+            self.worker_needed.emit()
+
+        # 3
+        p = subprocess.run(r'wmic /node:"%s" /user:"st" /password:"stinstaller" process call create "%s%s.bat %s"'
+                           % (host.hostname, l, c, self.installation_path.text()))
+        if p.returncode:
+            logger.message_appeared.emit('*** Ошибка выполнения команды: %s' % str(p.args))
+            host.state = host.md5_state = Host.State.FAILURE
+
+        # 4
+        while True:
+            if os.path.exists(r + c + '.txt'):
+                with open(r + c + '.txt') as f:
+                    for line in [line.strip() for line in f.readlines()]:
+                        if line == 'success':
+                            host.state = host.md5_state = Host.State.SUCCESS
+                        else:
+                            if line.startswith('error'):
+                                error_msg = line.split(' ', maxsplit=1)[1]
+                                logger.message_appeared.emit('*** Ошибка проверки %s: %s' % (host.hostname, error_msg))
+                                host.state = host.md5_state = Host.State.FAILURE
+                self.table_changed.emit()
+                self.worker_needed.emit()
+                try:  # Делаем попытку удалить временные файлы не важно с каким результатом
+                    os.unlink(r + c + '.bat')
+                    os.unlink(r + c + '.txt')
+                    os.unlink(r + c + '.part.txt')
+                except:
+                    pass
+                return 0
+            time.sleep(3)
 
     def worker(self):
         # Копирование base
@@ -568,11 +638,6 @@ class Installer(QWidget):
         if any_base_copy_started:
             return
 
-        # Далее идут однопоточные операции с блокированием через self.is_local_idle,
-        # поэтому дальше проходит не более одного worker-а.
-        if not self.is_local_idle:
-            return
-
         # Копирование conf
 
         # Если хотя бы один UNKNOWN, то значит ещё не везде ещё скопирован base - выходим.
@@ -584,22 +649,18 @@ class Installer(QWidget):
         # и ставим копирование conf.
         for host in self.table.model().data.hosts:
             if host.state == Host.State.BASE_SUCCESS:
-                self.is_local_idle = False
                 threading.Thread(target=self.do_copy_conf).start()
                 return
-
-        if not self.is_local_idle:
-            return
 
         # Выполнение pre-скриптов
         if self.is_prepare_script_used:
             for host in self.table.model().data.hosts:
                 if host.state == Host.State.CONF_SUCCESS:
-                    self.is_local_idle = False
                     threading.Thread(target=self.do_run_pre_script).start()
                     return
 
         # В зависимости от типа дистрибутива рассчитываем признак успеха установки (до проверки!)
+        # TODO: вынести это во вне чтобы выполнялось один раз
         success_state = Host.State.BASE_SUCCESS
         if self.is_distribution_with_conf and self.is_prepare_script_used:
             success_state = Host.State.PRE_SUCCESS
@@ -609,19 +670,14 @@ class Installer(QWidget):
         # Проверка md5 и выставление флага общего успеха
         for host in self.table.model().data.hosts:
             if host.state == success_state:
-                threading.Thread(target=self.do_check_md5, args=(host,)).start()
+                threading.Thread(target=self.do_verify, args=(host,)).start()
 
-        # Проверка на ФИНИШ и выключение таймера
-        all_success = True
         for host in self.table.model().data.hosts:
-            if host.state == success_state:
-                host.state = Host.State.SUCCESS
-                self.table_changed.emit()
-            else:
-                all_success = False
-        if all_success:
-            self.overall_timer = -self.overall_timer
-            logger.message_appeared.emit('ФИНИШ')
+            if host.state != Host.State.SUCCESS:
+                return
+
+        self.overall_timer = -self.overall_timer
+        logger.message_appeared.emit('ФИНИШ')
 
     def prepare_distribution(self, uri):
         logger.message_appeared.emit('Открытие ' + uri)
@@ -695,6 +751,7 @@ class Installer(QWidget):
         self.configurations_changed.emit()
 
         self.distribution.set_base_txt(base_txt)  # TODO Вынести в конструктор дистрибутива!
+
         self.state = Installer.State.PREPARED
         self.state_changed.emit()
 
