@@ -15,6 +15,7 @@ import subprocess
 from enum import Enum, auto
 
 import PyQt5
+from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import (QApplication, QLineEdit, QHBoxLayout, QVBoxLayout, QTabWidget, QWidget, QTableView,
                              QPushButton, QLabel, QGridLayout, QTreeView, QItemDelegate, QComboBox,
                              QStyleOptionComboBox, QStyle, QFileDialog)
@@ -293,7 +294,11 @@ class Installer(QWidget):
         gl.addWidget(self.stacked,                   0, 3,-1, 1)
 
         self.setLayout(gl)
-        self.setGeometry(100, 100, 1000, 700)
+
+        screen_geometry = QtWidgets.QDesktopWidget().screenGeometry(-1)  # -1 текущий экран
+        screen_height = screen_geometry.height()
+        screen_width = screen_geometry.width()
+        self.setGeometry(200, 200, screen_width - 400, screen_height - 400)
 
         self.window_title_changed.emit()
 
