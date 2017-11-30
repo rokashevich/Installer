@@ -400,8 +400,7 @@ class Installer(QWidget):
     def on_table_clicked(self, index):
         row = index.row()
         column = index.column()
-        print('Кликнуто в таблице: ряд=' + str(row) + ', столбец=' + str(column))
-        if column == 3:  # Правая кнопка индивидуального запуска/останова
+        if column == 1:
             host = self.table.model().data.hosts[index.row()]
             host.state = Host.State.UNKNOWN
             self.worker_needed.emit()
