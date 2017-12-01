@@ -156,12 +156,11 @@ class Installer(QWidget):
                 PyQt5.QtWidgets.QStyledItemDelegate.__init__(self, parent)
 
             def paint(self, painter, option, index):
-                color = "#000" if index.data().checked else "#ccc"
                 painter.save()
                 font = painter.font()
                 font.setPointSize(font.pointSize() * 1.5)
                 painter.setFont(font)
-                painter.setPen(PyQt5.QtGui.QPen(PyQt5.QtGui.QColor(color)))
+                painter.setPen(PyQt5.QtGui.QPen(PyQt5.QtGui.QColor("#000" if index.data().checked else "#ccc")))
                 painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignVCenter | PyQt5.QtCore.Qt.AlignCenter, str(index.row()+1))
                 painter.restore()
 
@@ -210,6 +209,7 @@ class Installer(QWidget):
                 font = painter.font()
                 font.setPointSize(font.pointSize() * 1.5)
                 painter.setFont(font)
+                painter.setPen(PyQt5.QtGui.QPen(PyQt5.QtGui.QColor("#000" if host.checked else "#ccc")))
                 painter.fillRect(option.rect, PyQt5.QtGui.QColor(color))
                 painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignVCenter | PyQt5.QtCore.Qt.AlignLeft, text)
                 painter.restore()
@@ -291,7 +291,7 @@ class Installer(QWidget):
         self.button_browse.clicked.connect(self.on_clicked_button_browse)
         self.button_start_stop.clicked.connect(self.on_clicked_button_start_stop)
         self.button_console.clicked.connect(self.on_clicked_button_console)
-        self.table.clicked.connect(self.on_table_clicked)
+        self.table.clicked.connect(self.on_clicked_table)
         self.state_changed.connect(self.on_state_changed)
         self.row_changed.connect(self.on_row_changed)
         self.table_changed.connect(self.on_table_changed)
@@ -376,13 +376,16 @@ class Installer(QWidget):
             self.button_start_stop.setEnabled(True)
             self.table.setEnabled(True)
 
-    def on_table_clicked(self, index):
+    def on_clicked_table(self, index):
         row = index.row()
         column = index.column()
-        if column == 1:
-            host = self.table.model().data.hosts[index.row()]
+        host = self.table.model().data.hosts[index.row()]
+        if column == 0:
+            host.checked = not host.checked
+        elif column == 1:
             host.state = Host.State.UNKNOWN
             self.worker_needed.emit()
+        self.table_changed.emit()
 
     def on_conf_selected(self):  # Выбрали мышкой конфигурацию
         self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
@@ -499,7 +502,7 @@ class Installer(QWidget):
         self.worker_needed.emit()
 
     def do_copy_conf(self):
-        for host in self.table.model().data.hosts:
+        for host in [host for host in self.table.model().data.hosts if host.checked]:
             if host.state == Host.State.BASE_SUCCESS:
                 print('conf -> '+host.hostname)
                 conf_name = self.configurations[self.configurations_list.currentIndex().row()]
@@ -525,7 +528,7 @@ class Installer(QWidget):
         if os.path.exists(s):
             self.is_prepare_script_used = True
             s = os.path.join(self.installation_path.text(), 'etc', self.pre_install_scripts_combo.currentText())
-            for host in self.table.model().data.hosts:
+            for host in [host for host in self.table.model().data.hosts if host.checked]:
                 print('pre -> ' + host.hostname)
                 if host.state == Host.State.CONF_SUCCESS:
                     cmd = r'psexec \\' + host.hostname + ' -u st -p stinstaller ' + s
@@ -608,11 +611,11 @@ class Installer(QWidget):
         # Копирование base
         have_source_host = False
         any_base_copy_started = False
-        for source_host in self.table.model().data.hosts:
+        for source_host in [host for host in self.table.model().data.hosts if host.checked]:
             if source_host.state == Host.State.BASE_SUCCESS or source_host.state == Host.State.BASE_INSTALLING_SOURCE:
                 have_source_host = True
                 if source_host.state == Host.State.BASE_SUCCESS:
-                    for destination_host in self.table.model().data.hosts:
+                    for destination_host in [host for host in self.table.model().data.hosts if host.checked]:
                         if destination_host.state == Host.State.UNKNOWN:
                             print(' base copy ' + source_host.hostname + ' -> ' + destination_host.hostname)
                             source_host.state = Host.State.BASE_INSTALLING_SOURCE
@@ -621,7 +624,7 @@ class Installer(QWidget):
                             any_base_copy_started = True
                             break
         if not have_source_host:
-            for destination_host in self.table.model().data.hosts:
+            for destination_host in [host for host in self.table.model().data.hosts if host.checked]:
                 if destination_host.state == destination_host.state.UNKNOWN:
                     destination_host.state = Host.State.BASE_INSTALLING_DESTINATION
                     threading.Thread(target=self.do_copy_base, args=(None, destination_host)).start()
@@ -633,20 +636,20 @@ class Installer(QWidget):
         # Копирование conf
 
         # Если хотя бы один UNKNOWN, то значит ещё не везде ещё скопирован base - выходим.
-        for host in self.table.model().data.hosts:
+        for host in [host for host in self.table.model().data.hosts if host.checked]:
             if (host.state == Host.State.UNKNOWN or host.state == Host.State.BASE_INSTALLING_SOURCE
                     or host.state == Host.State.BASE_INSTALLING_DESTINATION):
                 return
         # Если нет ни одного UNKNOWN, значит все так или иначе прошли копирование base - поэтому ищем BASE_SUCCESS
         # и ставим копирование conf.
-        for host in self.table.model().data.hosts:
+        for host in [host for host in self.table.model().data.hosts if host.checked]:
             if host.state == Host.State.BASE_SUCCESS:
                 threading.Thread(target=self.do_copy_conf).start()
                 return
 
         # Выполнение pre-скриптов
         if self.is_prepare_script_used:
-            for host in self.table.model().data.hosts:
+            for host in [host for host in self.table.model().data.hosts if host.checked]:
                 if host.state == Host.State.CONF_SUCCESS:
                     threading.Thread(target=self.do_run_pre_script).start()
                     return
@@ -660,11 +663,11 @@ class Installer(QWidget):
             success_state = Host.State.CONF_SUCCESS
 
         # Проверка md5 и выставление флага общего успеха
-        for host in self.table.model().data.hosts:
+        for host in [host for host in self.table.model().data.hosts if host.checked]:
             if host.state == success_state:
                 threading.Thread(target=self.do_verify, args=(host,)).start()
 
-        for host in self.table.model().data.hosts:
+        for host in [host for host in self.table.model().data.hosts if host.checked]:
             if host.state != Host.State.SUCCESS:
                 return
 
