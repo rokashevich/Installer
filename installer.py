@@ -135,29 +135,12 @@ class Installer(QWidget):
         def __init__(self, uri):
             self.uri = uri  # zip-дистрибутив или base.txt
             self.base_txt = ''  # Полный путь к base.txt
-            self.unpacked_confs = ''  # Полный путь к распакованному директории conf
+            self.configurations_dir = ''  # Полный путь к распакованному директории conf
             self.name = ''  # Имя дистрибутива, например su30mki_skytech_develop_5420_conf_1991_skytech_0.14.12.5.383
             self.base = ''
             self.size = 0
-
-        def set_base_txt(self, base_txt):
-            confs = os.path.abspath(os.path.join(os.path.dirname(base_txt), '..', 'conf'))
-            if os.path.isdir(confs):
-                self.unpacked_confs = confs
-            for line in open(base_txt, errors='ignore').readlines():
-                if line.startswith('name '):
-                    self.name = line.split(' ')[1].strip()
-                    continue
-            self.base_txt = base_txt
-            self.base = os.path.dirname(self.base_txt)
-            self.size = helpers.get_path_size(self.base)
-
-        def title(self):
-            """ Возвращаем строку для заголовка окна """
-            if self.name:
-                return self.name
-            else:
-                return os.path.basename(self.uri)
+            self.prepare_timer = 0
+            self.overall_timer = 0  # <=0 - процесс не запущен, >0 - процесс идёт
 
     configurations_changed = pyqtSignal()
     configuration_changed = pyqtSignal()
@@ -255,15 +238,11 @@ class Installer(QWidget):
         self.table_data_dict = {}
         self.pre_install_scripts_dict = {}
 
-        self.prepare_timer = 0
         self.prepare_message = ''
-        self.prepare_error_message = ''
         self.prepare_process_download = None
         self.prepare_process_unzip = None
         self.is_distribution_with_conf = False
         self.is_prepare_script_used = False
-        
-        self.overall_timer = 0  # <=0 - процесс не запущен, >0 - процесс идёт
 
         self.copy_conf_in_progress = False
 
@@ -476,13 +455,13 @@ class Installer(QWidget):
 
     def do_start_spider(self):
         def timer():
-            self.overall_timer = 1
-            while self.overall_timer > 0:
+            self.distribution.overall_timer = 1
+            while self.distribution.overall_timer > 0:
                 if not threading.main_thread().is_alive():
                     sys.exit()
                 self.window_title_changed.emit()
                 time.sleep(1)
-                self.overall_timer += 1
+                self.distribution.overall_timer += 1
 
         threading.Thread(target=timer).start()
         self.worker_needed.emit()
@@ -524,8 +503,8 @@ class Installer(QWidget):
             if host.state == Host.State.BASE_SUCCESS:
                 print('conf -> '+host.hostname)
                 conf_name = self.configurations[self.configurations_list.currentIndex().row()]
-                for c in [os.path.join(self.distribution.unpacked_confs, conf_name, 'common'),
-                          os.path.join(self.distribution.unpacked_confs, conf_name, host.hostname)]:
+                for c in [os.path.join(self.distribution.configurations_dir, conf_name, 'common'),
+                          os.path.join(self.distribution.configurations_dir, conf_name, host.hostname)]:
                     if os.path.exists(c):
                         r = helpers.copy_from_to(None, c, host.hostname, self.installation_path.text())
                         if r:
@@ -539,7 +518,7 @@ class Installer(QWidget):
         self.worker_needed.emit()
 
     def do_run_pre_script(self):
-        s = os.path.join(self.distribution.unpacked_confs,
+        s = os.path.join(self.distribution.configurations_dir,
                          self.configurations[self.configurations_list.currentIndex().row()],
                          'common', 'etc',
                          self.pre_install_scripts_combo.currentText())
@@ -689,8 +668,8 @@ class Installer(QWidget):
             if host.state != Host.State.SUCCESS:
                 return
 
-        self.overall_timer = -self.overall_timer
-        logger.message_appeared.emit('ФИНИШ')
+        self.distribution.overall_timer = -self.distribution.overall_timer
+        self.window_title_changed.emit()
 
     def prepare_distribution(self, uri):
         logger.message_appeared.emit('Открытие ' + uri)
@@ -703,13 +682,11 @@ class Installer(QWidget):
                     sys.exit()
                 self.state_changed.emit()
                 time.sleep(1)
-                self.prepare_timer += 1
+                self.distribution.prepare_timer += 1
                 self.window_title_changed.emit()
 
         self.distribution = Installer.Distribution(uri)
-        self.prepare_timer = 0
         self.prepare_message = ''
-        self.prepare_error_message = ''
         self.prepare_process_download = None
         self.prepare_process_unzip = None
         self.configurations = []
@@ -727,7 +704,7 @@ class Installer(QWidget):
             base_txt = os.path.join(unpack_to, 'base', 'base.txt')
             if not os.path.isfile(base_txt):
                 self.state = Installer.State.DEFAULT
-                self.prepare_error_message = 'В распакованном дистрибутиве не найден %s' % base_txt
+                logger.message_appeared.emit('*** Ошибка открытия: %s' % uri)
                 self.state_changed.emit()
                 return
 
@@ -763,8 +740,29 @@ class Installer(QWidget):
         self.configurations.sort()
         self.configurations_changed.emit()
 
-        self.distribution.set_base_txt(base_txt)  # TODO Вынести в конструктор дистрибутива!
+        configurations_dir = os.path.abspath(os.path.join(os.path.dirname(base_txt), '..', 'conf'))
+        if os.path.isdir(configurations_dir):
+            self.distribution.configurations_dir = configurations_dir
+        for line in open(base_txt, errors='ignore').readlines():
+            if line.startswith('name '):
+                self.distribution.name = line.split(' ')[1].strip()
+                continue
+        if not self.distribution.name:
+            self.distribution.name = os.path.basename(self.distribution.uri)
+        self.distribution.base_txt = base_txt
+        self.distribution.base = os.path.dirname(self.distribution.base_txt)
 
+        def get_path_size():
+            for dirpath, dirnames, filenames in os.walk(self.distribution.base):
+                for f in filenames:
+                    fp = os.path.join(dirpath, f)
+                    self.distribution.size += os.path.getsize(fp)
+                    self.window_title_changed.emit()
+            self.distribution.size = -self.distribution.size
+            self.window_title_changed.emit()
+        threading.Thread(target=get_path_size).start()
+
+        self.state = Installer.State.PREPARED
         self.state = Installer.State.PREPARED
         self.state_changed.emit()
 
@@ -788,16 +786,34 @@ class Installer(QWidget):
 
     def on_window_title_changed(self):
         title = 'Installer '+self.version
-        if self.distribution:
-                title += ' • '+self.distribution.title()
-                if self.distribution.size > 0:
-                    title += ' • '+helpers.bytes_to_human(self.distribution.size)
-                if self.distribution.uri.endswith('.zip'):
-                    title += ' • Распаковка: '+helpers.seconds_to_human(self.prepare_timer)
-        if self.overall_timer > 0:
-            title += ' • Установка: '+helpers.seconds_to_human(self.overall_timer)
-        elif self.overall_timer < 0:
-            title += ' • Установка: ' + helpers.seconds_to_human(abs(self.overall_timer))
+
+        if not self.distribution:  # Самый первый запуск, никакой дистрибутив ещё не открыт.
+            self.setWindowTitle(title)
+            return
+
+        if not self.distribution.name:  # Имя дистрибутива ещё не доступно - занчит происходит его открытие
+            title += ' • Распаковка: ' + self.distribution.uri + '... ' \
+                     + helpers.seconds_to_human(self.distribution.prepare_timer)
+            self.setWindowTitle(title)
+            return
+
+        title += ' • Дистрибутив: ' + self.distribution.name
+
+        if self.distribution.uri.endswith('.zip'):
+            title += ' (распакован за %s' % helpers.seconds_to_human(self.distribution.prepare_timer)
+        else:
+            title += ' (без распаковки'
+
+        title += ', '+helpers.bytes_to_human(abs(self.distribution.size))
+        if self.distribution.size > 0:
+            title += '...'
+        title += ')'
+
+        if self.distribution.overall_timer > 0:
+            title += ' • Установка... '+helpers.seconds_to_human(self.distribution.overall_timer)
+        elif self.distribution.overall_timer < 0:
+            title += ' • Установлено за ' + helpers.seconds_to_human(abs(self.distribution.overall_timer))
+
         self.setWindowTitle(title)
 
 
