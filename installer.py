@@ -390,7 +390,6 @@ class Installer(QWidget):
             self.table.setEnabled(True)
 
     def on_clicked_table(self, index):
-        row = index.row()
         column = index.column()
         host = self.table.model().data.hosts[index.row()]
         if column == 0:
@@ -403,7 +402,11 @@ class Installer(QWidget):
                 if host.state == Host.State.UNKNOWN:
                     host.state = Host.State.IDLE
                 else:
-                    host.state = Host.State.CANCELING
+                    if host.state == Host.State.SUCCESS:
+                        host.state = Host.State.UNKNOWN
+                        self.worker_needed.emit()
+                    else:
+                        host.state = Host.State.CANCELING
         self.table_changed.emit()
 
     def on_conf_selected(self):  # Выбрали мышкой конфигурацию
@@ -730,13 +733,11 @@ class Installer(QWidget):
             if host.state != Host.State.SUCCESS:
                 return
 
-
-
         self.distribution.overall_timer = -self.distribution.overall_timer
         self.window_title_changed.emit()
 
     def prepare_distribution(self, uri):
-        logger.message_appeared.emit('Открытие ' + uri)
+        logger.message_appeared.emit('--- Открытие ' + uri)
 
         def timer():
             while self.state == Installer.State.PREPARING:
