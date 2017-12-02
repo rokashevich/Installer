@@ -58,6 +58,8 @@ class Host:
         MD5_FAILURE = auto()
         SUCCESS = auto()
         FAILURE = auto()
+        CANCELING = auto()
+        IDLE = auto()
 
 class TableData:
     class Host:
@@ -67,11 +69,11 @@ class TableData:
             self.base_timer = -1
             self.verify_timer = -1
             self.overall_timer = 0
-            self.base_state = Host.State.UNKNOWN
-            self.conf_state = Host.State.UNKNOWN
-            self.pre_state = Host.State.UNKNOWN
-            self.md5_state = Host.State.UNKNOWN
-            self.state = Host.State.UNKNOWN
+            self.base_state = Host.State.IDLE
+            self.conf_state = Host.State.IDLE
+            self.pre_state = Host.State.IDLE
+            self.md5_state = Host.State.IDLE
+            self.state = Host.State.IDLE
 
     def __init__(self, source, destination=''):
         self.source = source
@@ -196,13 +198,22 @@ class Installer(QWidget):
                         text += '; conf'
                     if host.pre_state == Host.State.PRE_SUCCESS:
                         text += '; pre-скрипт выполнен'
-                    text += '; проверка md5 %s - ОК' % helpers.seconds_to_human(host.verify_timer)
+                    text += '; проверка md5 %s УСПЕХ' % helpers.seconds_to_human(host.verify_timer)
                     color = '#00eb00'
                 elif host.state == Host.State.FAILURE:
                     text = 'ОШИБКА'
-                    color = '#ff3300'
+                    color = '#ff5533'
+                elif host.state == Host.State.CANCELING:
+                    text = 'Остановка процесса...'
+                    color = '#ffaa33'
+                elif host.state == Host.State.IDLE:
+                    text = 'Кликните, чтобы запустить только этот хост'
+                    color = '#ffffff'
+                elif host.state == Host.State.UNKNOWN:
+                    text = 'Поставлен в очередь на установку'
+                    color = '#ffffff'
                 else:
-                    text = ''
+                    text = 'Этого режима быть не должно'
                     color = '#ffffff'
                 text = '  ' + host.hostname + '    ' + text
                 painter.save()
@@ -297,7 +308,7 @@ class Installer(QWidget):
         self.table_changed.connect(self.on_table_changed)
         self.worker_needed.connect(self.worker)
         self.pre_install_scripts_combo.activated.connect(self.on_pre_install_scripts_combo_changed)
-        self.window_title_changed.connect(self.on_window_title_changed)
+        self.window_title_changed.connect(self.on_title_changed)
         logger.message_appeared.connect(self.on_message_appeared)
 
         self.state = Installer.State.DEFAULT
@@ -383,8 +394,11 @@ class Installer(QWidget):
         if column == 0:
             host.checked = not host.checked
         elif column == 1:
-            host.state = Host.State.UNKNOWN
-            self.worker_needed.emit()
+            if host.state == Host.State.IDLE:
+                host.state = Host.State.UNKNOWN
+                self.worker_needed.emit()
+            elif not host.state == Host.State.UNKNOWN:
+                host.state = Host.State.CANCELING
         self.table_changed.emit()
 
     def on_conf_selected(self):  # Выбрали мышкой конфигурацию
@@ -467,6 +481,9 @@ class Installer(QWidget):
                 self.distribution.overall_timer += 1
 
         threading.Thread(target=timer).start()
+        for host in [host for host in self.table.model().data.hosts if host.checked]:
+            if host.state == Host.State.IDLE:
+                host.state = Host.State.UNKNOWN
         self.worker_needed.emit()
 
     def on_clicked_button_console(self):
@@ -478,19 +495,31 @@ class Installer(QWidget):
             self.stacked.setCurrentIndex(0)
 
     def do_copy_base(self, source_host, destination_host):
+        identifiers = []
+
         def timer():
             while destination_host.state == Host.State.BASE_INSTALLING_DESTINATION:
                 if not threading.main_thread().is_alive():
-                    sys.exit()
+                    return
                 destination_host.base_timer += 1
                 self.table_changed.emit()
                 time.sleep(1)
+            if destination_host.state == Host.State.CANCELING:
+                logger.message_appeared.emit('*** Остановка копирования base на ' + destination_host.hostname)
+                for identifier in identifiers:
+                    try:
+                        identifier.kill()
+                    except:
+                        pass
         threading.Thread(target=timer).start()
-
         source_hostname = source_host.hostname if source_host else None
         source_path = self.installation_path.text() if source_host else self.distribution.base
         r = helpers.copy_from_to(source_hostname, source_path, destination_host.hostname, self.installation_path.text(),
-                                 mirror=True)
+                                 mirror=True, identifiers=identifiers)
+        if destination_host.state == Host.State.CANCELING:
+            destination_host.state = Host.State.IDLE
+            self.table_changed.emit()
+            return
         if r:
             destination_host.state = destination_host.base_state = Host.State.FAILURE
         else:
@@ -617,7 +646,6 @@ class Installer(QWidget):
                 if source_host.state == Host.State.BASE_SUCCESS:
                     for destination_host in [host for host in self.table.model().data.hosts if host.checked]:
                         if destination_host.state == Host.State.UNKNOWN:
-                            print(' base copy ' + source_host.hostname + ' -> ' + destination_host.hostname)
                             source_host.state = Host.State.BASE_INSTALLING_SOURCE
                             destination_host.state = Host.State.BASE_INSTALLING_DESTINATION
                             threading.Thread(target=self.do_copy_base, args=(source_host, destination_host)).start()
@@ -787,7 +815,7 @@ class Installer(QWidget):
 
         return unpack_to
 
-    def on_window_title_changed(self):
+    def on_title_changed(self):
         title = 'Installer '+self.version
 
         if not self.distribution:  # Самый первый запуск, никакой дистрибутив ещё не открыт.

@@ -69,20 +69,19 @@ def md5sum(dir):
     pass
 
 
-def copy_from_to(h1, p1, h2, p2, mirror=False):
-    # taskkill /s paws-iws-1 /u st /p stinstaller /t /f /im psexesvc.exe
+def copy_from_to(h1, p1, h2, p2, mirror=False, identifiers=[]):
     if sys.platform == 'win32':
-        p = r'/mir' if mirror else r'/e'
-        p += ' /r:0'  # /w:5 - ждать секунд, /r - retry раз
-        p += ' /nfl /ndl /njh /njs /nc /ns /np'  # silent
+        p = [r'/mir'] if mirror else [r'/e']
+        p.extend([r'/r:0'])  # /w:5 - ждать секунд, /r - retry раз
+        p.extend([r'/nfl', r'/ndl', r'/njh', r'/njs', r'/nc', r'/ns', r'/np'])  # silent
         if h1:
-            c = r'PsExec.exe -accepteula -nobanner \\' + h1 + r' -u st -p stinstaller robocopy '+p+' ' + p1 \
-                + r' \\' + h2 + '\\' + p2.replace(':', '$')
+            cmd = ['PsExec.exe', '-accepteula', '-nobanner', '\\\\' + h1, '-u', 'st', '-p', 'stinstaller',
+                 'robocopy '] + p + [' ' + p1 + ' \\\\' + h2 + '\\' + p2.replace(':', '$')]
         else:
-            c = r'robocopy '+p+' ' + p1 + r' \\' + h2 + '\\' + p2.replace(':', '$')
-        time.sleep(1)
-        r = subprocess.run(c, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        #print(' cmd='+c+' ret='+str(r.returncode) + ' out='+str(r.stdout) + ' err='+str(r.stderr))
+            cmd = ['robocopy'] + p + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
+        r = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        identifiers.append(r)
+        r.communicate()
         if r.returncode < 8:
             # 16 ***FATAL ERROR***
             # 15 FAIL MISM XTRA COPY
@@ -102,6 +101,6 @@ def copy_from_to(h1, p1, h2, p2, mirror=False):
             #  1 COPY OK
             #  0 --no change--
             return ''
-        return 'command=%s returncode=%d stdout=%s stderr=%s' % (c, r.returncode, r.stdout, r.stderr)
+        return 'cmd=%s returncode=%d stdout=%s stderr=%s' % (cmd, r.returncode, r.stdout, r.stderr)
     else:
         sys.exit('sys.platform != win32')
