@@ -20,7 +20,7 @@ from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import (QApplication, QLineEdit, QHBoxLayout, QVBoxLayout, QTabWidget, QWidget, QTableView,
                              QPushButton, QLabel, QGridLayout, QTreeView, QItemDelegate, QComboBox,
                              QStyleOptionComboBox, QStyle, QFileDialog)
-from PyQt5.QtGui import QFont, QIcon
+from PyQt5.QtGui import QFont
 from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSignal, pyqtSlot, QCoreApplication, QSettings
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
@@ -296,7 +296,6 @@ class Installer(QWidget):
 
         # Стилизация
         # Документация по стилизации Qt: http://doc.qt.io/qt-5/stylesheet-reference.html
-        self.setWindowIcon(QIcon('installer.png'))
         self.console.setStyleSheet("font-family: Consolas")
 
         self.show()
@@ -850,7 +849,7 @@ class Installer(QWidget):
         return unpack_to
 
     def on_title_changed(self):
-        title = 'Installer '+self.version
+        title = QCoreApplication.applicationName() + ' ' + self.version
 
         if not self.distribution:  # Самый первый запуск, никакой дистрибутив ещё не открыт.
             self.setWindowTitle(title)
@@ -880,12 +879,3 @@ class Installer(QWidget):
             title += ' • Установлено за ' + helpers.seconds_to_human(abs(self.distribution.overall_timer))
 
         self.setWindowTitle(title)
-
-
-if __name__ == '__main__':
-    QCoreApplication.setOrganizationName(Globals.organization_name)
-    QCoreApplication.setApplicationName('Installer')
-
-    app = QApplication(sys.argv)
-    ex = Installer()
-    sys.exit(app.exec_())
