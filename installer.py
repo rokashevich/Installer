@@ -523,6 +523,8 @@ class Installer(QWidget):
                                  mirror=True, identifiers=identifiers)
         if destination_host.state == Host.State.CANCELING:
             destination_host.state = Host.State.IDLE
+            if source_host:
+                source_host.state = Host.State.BASE_SUCCESS
             self.table_changed.emit()
         else:
             if r:
@@ -541,7 +543,6 @@ class Installer(QWidget):
                 self.table_changed.emit()
                 continue
             if host.state == Host.State.BASE_SUCCESS:
-                print('conf -> '+host.hostname)
                 conf_name = self.configurations[self.configurations_list.currentIndex().row()]
                 for c in [os.path.join(self.distribution.configurations_dir, conf_name, 'common'),
                           os.path.join(self.distribution.configurations_dir, conf_name, host.hostname)]:
@@ -663,7 +664,6 @@ class Installer(QWidget):
             pass
 
     def worker(self):
-        print(1)
         # Копирование base
         have_source_host = False
         any_base_copy_started = False
@@ -734,8 +734,6 @@ class Installer(QWidget):
 
         self.distribution.overall_timer = -self.distribution.overall_timer
         self.window_title_changed.emit()
-
-        print(2)
 
     def prepare_distribution(self, uri):
         logger.message_appeared.emit('Открытие ' + uri)
