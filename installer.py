@@ -6,6 +6,7 @@ import datetime
 import os
 import sys
 import glob
+import re
 import time
 import shutil
 import zipfile
@@ -398,8 +399,12 @@ class Installer(QWidget):
             if host.state == Host.State.IDLE:
                 host.state = Host.State.UNKNOWN
                 self.worker_needed.emit()
-            elif not host.state == Host.State.UNKNOWN:
-                host.state = Host.State.CANCELING
+            else:
+                if host.state == Host.State.UNKNOWN:
+                    host.state = Host.State.IDLE
+                else:
+                    host.state = Host.State.CANCELING
+                    self.worker_needed.emit()
         self.table_changed.emit()
 
     def on_conf_selected(self):  # Выбрали мышкой конфигурацию
@@ -506,9 +511,9 @@ class Installer(QWidget):
                 self.table_changed.emit()
                 time.sleep(1)
             if destination_host.state == Host.State.CANCELING:
-                logger.message_appeared.emit('*** Остановка копирования base на ' + destination_host.hostname)
                 for identifier in identifiers:
                     try:
+                        logger.message_appeared.emit('--- %s: остановка копирования base' % destination_host.hostname)
                         identifier.kill()
                     except:
                         pass
@@ -532,6 +537,10 @@ class Installer(QWidget):
 
     def do_copy_conf(self):
         for host in [host for host in self.table.model().data.hosts if host.checked]:
+            if host.state == Host.State.CANCELING:
+                host.state = Host.State.IDLE
+                self.table_changed.emit()
+                continue
             if host.state == Host.State.BASE_SUCCESS:
                 print('conf -> '+host.hostname)
                 conf_name = self.configurations[self.configurations_list.currentIndex().row()]
@@ -558,7 +567,10 @@ class Installer(QWidget):
             self.is_prepare_script_used = True
             s = os.path.join(self.installation_path.text(), 'etc', self.pre_install_scripts_combo.currentText())
             for host in [host for host in self.table.model().data.hosts if host.checked]:
-                print('pre -> ' + host.hostname)
+                if host.state == Host.State.CANCELING:
+                    host.state = Host.State.IDLE
+                    self.table_changed.emit()
+                    continue
                 if host.state == Host.State.CONF_SUCCESS:
                     cmd = r'psexec \\' + host.hostname + ' -u ' + Globals.samba_login + ' -p ' + Globals.samba_password \
                           + ' ' + s
@@ -611,11 +623,15 @@ class Installer(QWidget):
         p = subprocess.run('wmic /node:"%s" /user:"' % host.hostname
                            + Globals.samba_login + r'" /password:"' + Globals.samba_password
                            + r'" process call create "%s%s.bat %s"'
-                           % (l, c, self.installation_path.text()))
+                           % (l, c, self.installation_path.text()), stdout=subprocess.PIPE)
         if p.returncode:
             logger.message_appeared.emit('*** Ошибка выполнения команды: %s' % str(p.args))
             host.state = host.md5_state = Host.State.FAILURE
 
+        try:
+            pid = re.findall(r'ProcessId = (.*?);', str(p.stdout))
+        except:
+            pid = []
         # 4
         while True:
             if os.path.exists(r + c + '.txt'):
@@ -630,16 +646,25 @@ class Installer(QWidget):
                                 host.state = host.md5_state = Host.State.FAILURE
                 self.table_changed.emit()
                 self.worker_needed.emit()
-                try:  # Делаем попытку удалить временные файлы не важно с каким результатом
-                    os.unlink(r + c + '.bat')
-                    os.unlink(r + c + '.txt')
-                    os.unlink(r + c + '.part.txt')
-                except:
-                    pass
-                return 0
-            time.sleep(3)
+                break
+            if host.state == Host.State.CANCELING:
+                logger.message_appeared.emit('--- Инфо: %s: остановка проверки md5' % host.hostname)
+                if len(pid):
+                    subprocess.run(r'taskkill /s %s /u %s /p %s /t /f /pid %s'
+                                   % (host.hostname, Globals.samba_login, Globals.samba_password, pid[0]))
+                host.state = Host.State.IDLE
+                self.table_changed.emit()
+                break
+            time.sleep(3)  # Проверяем наличие файла раз в 3 секунды (просто так взято число)
+        try:  # Делаем попытку удалить временные файлы не важно с каким результатом
+            os.unlink(r + c + '.bat')
+            os.unlink(r + c + '.txt')
+            os.unlink(r + c + '.part.txt')
+        except:
+            pass
 
     def worker(self):
+        print(1)
         # Копирование base
         have_source_host = False
         any_base_copy_started = False
@@ -706,8 +731,12 @@ class Installer(QWidget):
             if host.state != Host.State.SUCCESS:
                 return
 
+
+
         self.distribution.overall_timer = -self.distribution.overall_timer
         self.window_title_changed.emit()
+
+        print(2)
 
     def prepare_distribution(self, uri):
         logger.message_appeared.emit('Открытие ' + uri)
