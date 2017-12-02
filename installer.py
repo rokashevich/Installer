@@ -200,7 +200,7 @@ class Installer(QWidget):
                         text += '; conf'
                     if host.pre_state == Host.State.PRE_SUCCESS:
                         text += '; pre-скрипт выполнен'
-                    text += '; проверка md5 %s УСПЕХ' % helpers.seconds_to_human(host.verify_timer)
+                    text += '; проверка md5 %s — УСПЕХ' % helpers.seconds_to_human(host.verify_timer)
                     color = '#00eb00'
                 elif host.state == Host.State.FAILURE:
                     text = 'ОШИБКА'
@@ -404,7 +404,6 @@ class Installer(QWidget):
                     host.state = Host.State.IDLE
                 else:
                     host.state = Host.State.CANCELING
-                    self.worker_needed.emit()
         self.table_changed.emit()
 
     def on_conf_selected(self):  # Выбрали мышкой конфигурацию
