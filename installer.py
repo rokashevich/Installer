@@ -519,15 +519,14 @@ class Installer(QWidget):
         if destination_host.state == Host.State.CANCELING:
             destination_host.state = Host.State.IDLE
             self.table_changed.emit()
-            return
-        if r:
-            destination_host.state = destination_host.base_state = Host.State.FAILURE
         else:
-            destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
+            if r:
+                destination_host.state = destination_host.base_state = Host.State.FAILURE
+            else:
+                destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
 
-        if source_host:
-            source_host.state = Host.State.BASE_SUCCESS
-
+            if source_host:
+                source_host.state = Host.State.BASE_SUCCESS
         self.worker_needed.emit()
 
     def do_copy_conf(self):
@@ -641,16 +640,20 @@ class Installer(QWidget):
         have_source_host = False
         any_base_copy_started = False
         for source_host in [host for host in self.table.model().data.hosts if host.checked]:
-            if source_host.state == Host.State.BASE_SUCCESS or source_host.state == Host.State.BASE_INSTALLING_SOURCE:
+            if source_host.state == Host.State.BASE_SUCCESS:
                 have_source_host = True
-                if source_host.state == Host.State.BASE_SUCCESS:
-                    for destination_host in [host for host in self.table.model().data.hosts if host.checked]:
-                        if destination_host.state == Host.State.UNKNOWN:
-                            source_host.state = Host.State.BASE_INSTALLING_SOURCE
-                            destination_host.state = Host.State.BASE_INSTALLING_DESTINATION
-                            threading.Thread(target=self.do_copy_base, args=(source_host, destination_host)).start()
-                            any_base_copy_started = True
-                            break
+                for destination_host in [host for host in self.table.model().data.hosts if host.checked]:
+                    if destination_host.state == Host.State.UNKNOWN:
+                        source_host.state = Host.State.BASE_INSTALLING_SOURCE
+                        destination_host.state = Host.State.BASE_INSTALLING_DESTINATION
+                        threading.Thread(target=self.do_copy_base, args=(source_host, destination_host)).start()
+                        any_base_copy_started = True
+                        break
+        if not have_source_host:  # Нет source-хоста но возможно уже запущенно какое-то копирование
+            for host in [host for host in self.table.model().data.hosts if host.checked]:
+                if host.state == Host.State.BASE_INSTALLING_DESTINATION:
+                    have_source_host = True
+                    break
         if not have_source_host:
             for destination_host in [host for host in self.table.model().data.hosts if host.checked]:
                 if destination_host.state == destination_host.state.UNKNOWN:
