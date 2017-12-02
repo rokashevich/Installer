@@ -8,8 +8,8 @@ import shutil
 import zipfile
 import subprocess
 
+from globals import Globals
 
-# wmic /node:"vbox-1" /user:"st" /password:"stinstaller" /output:"wmic.txt" process call create "hostname"
 
 # ✅✓✔⚫⚪◉🔘◯🌕🌑●○🔳🔲⛳ ➤▶▸►❱›➡➔➜➧➫➩ ✕✖❌✗✘❌↻ 👍👎📁📂📄📜🔨🔧😸
 
@@ -75,8 +75,9 @@ def copy_from_to(h1, p1, h2, p2, mirror=False, identifiers=[]):
         p.extend([r'/r:0'])  # /w:5 - ждать секунд, /r - retry раз
         p.extend([r'/nfl', r'/ndl', r'/njh', r'/njs', r'/nc', r'/ns', r'/np'])  # silent
         if h1:
-            cmd = ['PsExec.exe', '-accepteula', '-nobanner', '\\\\' + h1, '-u', 'st', '-p', 'stinstaller',
-                 'robocopy '] + p + [' ' + p1 + ' \\\\' + h2 + '\\' + p2.replace(':', '$')]
+            cmd = ['PsExec.exe', '-accepteula', '-nobanner', '\\\\' + h1,
+                   '-u', Globals.samba_login, '-p', Globals.samba_password,
+                   'robocopy '] + p + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
         else:
             cmd = ['robocopy'] + p + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
         r = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

@@ -24,6 +24,7 @@ from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSignal, pyqtSlot
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import helpers
+from globals import Globals
 
 
 class Logger(PyQt5.QtCore.QObject):
@@ -559,7 +560,8 @@ class Installer(QWidget):
             for host in [host for host in self.table.model().data.hosts if host.checked]:
                 print('pre -> ' + host.hostname)
                 if host.state == Host.State.CONF_SUCCESS:
-                    cmd = r'psexec \\' + host.hostname + ' -u st -p stinstaller ' + s
+                    cmd = r'psexec \\' + host.hostname + ' -u ' + Globals.samba_login + ' -p ' + Globals.samba_password \
+                          + ' ' + s
                     r = subprocess.run(cmd)
                     if r.returncode:
                         host.state = host.pre_state = Host.State.FAILURE
@@ -606,8 +608,10 @@ class Installer(QWidget):
             self.worker_needed.emit()
 
         # 3
-        p = subprocess.run(r'wmic /node:"%s" /user:"st" /password:"stinstaller" process call create "%s%s.bat %s"'
-                           % (host.hostname, l, c, self.installation_path.text()))
+        p = subprocess.run('wmic /node:"%s" /user:"' % host.hostname
+                           + Globals.samba_login + r'" /password:"' + Globals.samba_password
+                           + r'" process call create "%s%s.bat %s"'
+                           % (l, c, self.installation_path.text()))
         if p.returncode:
             logger.message_appeared.emit('*** Ошибка выполнения команды: %s' % str(p.args))
             host.state = host.md5_state = Host.State.FAILURE
@@ -852,8 +856,7 @@ class Installer(QWidget):
 
 
 if __name__ == '__main__':
-    QCoreApplication.setOrganizationName('Installer')
-    QCoreApplication.setOrganizationDomain('Installer')
+    QCoreApplication.setOrganizationName(Globals.organization_name)
     QCoreApplication.setApplicationName('Installer')
 
     app = QApplication(sys.argv)
