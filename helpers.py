@@ -34,6 +34,13 @@ from globals import Globals
 #         out='UNKNOWN'
 #     return[revision,out]
 
+
+def try_discover_lan_hosts():
+    return [host.replace('\\', '').strip() for host in str(
+        subprocess.run(r'net view /all', stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout).split(r'\r\n')
+            if host.startswith('\\\\')]
+
+
 def git_revision(path=''):
     r = subprocess.run('git describe --always', stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     print(r)

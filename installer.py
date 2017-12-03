@@ -26,6 +26,10 @@ from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSignal, pyqtSlot
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import helpers
 from globals import Globals
+from hostdiscoverer import HostDiscoverer
+
+
+timestamp = datetime.datetime.now()
 
 
 class Logger(PyQt5.QtCore.QObject):
@@ -36,7 +40,7 @@ class Logger(PyQt5.QtCore.QObject):
 
 
 logger = Logger()
-timestamp = datetime.datetime.now()
+host_discoverer = HostDiscoverer()
 
 
 class Host:
