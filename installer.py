@@ -309,7 +309,6 @@ class Installer(QWidget):
         self.button_console.clicked.connect(self.on_clicked_button_console)
         self.table.clicked.connect(self.on_clicked_table)
         self.state_changed.connect(self.on_state_changed)
-        self.row_changed.connect(self.on_row_changed)
         self.table_changed.connect(self.on_table_changed)
         self.worker_needed.connect(self.worker)
         self.pre_install_scripts_combo.activated.connect(self.on_pre_install_scripts_combo_changed)
@@ -323,9 +322,6 @@ class Installer(QWidget):
     def on_message_appeared(self, message):
         print(message)
         self.console.append(message)
-
-    def on_row_changed(self, row):
-        self.table.model().updateRow(row)
 
     def on_table_changed(self):
         self.table.model().updateTable()
