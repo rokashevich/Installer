@@ -35,7 +35,7 @@ from globals import Globals
 #     return[revision,out]
 
 
-def try_discover_lan_hosts():
+def discover_lan_hosts():
     return [host.replace('\\', '').strip() for host in str(
         subprocess.run(r'net view /all', stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout).split(r'\r\n')
             if host.startswith('\\\\')]

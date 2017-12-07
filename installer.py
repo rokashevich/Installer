@@ -26,7 +26,6 @@ from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSignal, pyqtSlot
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import helpers
 from globals import Globals
-from hostdiscoverer import HostDiscoverer
 
 
 timestamp = datetime.datetime.now()
@@ -40,12 +39,13 @@ class Logger(PyQt5.QtCore.QObject):
 
 
 logger = Logger()
-host_discoverer = HostDiscoverer()
 
 
 class Host:
     class State(Enum):
-        UNKNOWN = auto()
+        DISCOVERED = auto()
+        IDLE = auto()
+        QUEUED = auto()
         BASE_INSTALLING_SOURCE = auto()
         BASE_INSTALLING_DESTINATION = auto()
         BASE_SUCCESS = auto()
@@ -65,13 +65,12 @@ class Host:
         SUCCESS = auto()
         FAILURE = auto()
         CANCELING = auto()
-        IDLE = auto()
 
 class TableData:
     class Host:
-        def __init__(self, hostname):
-            self.checked = True
+        def __init__(self, hostname, checked):
             self.hostname = hostname
+            self.checked = checked
             self.base_timer = -1
             self.verify_timer = -1
             self.overall_timer = 0
@@ -86,15 +85,15 @@ class TableData:
         self.destination = destination if destination else self.source
         self.hosts = []
 
-    def add_host(self, hostname):
-        self.hosts.append(TableData.Host(hostname))
+    def add_host(self, hostname, checked=True):
+        self.hosts.append(TableData.Host(hostname, checked))
         self.hosts.sort(key=lambda x: x.hostname)
 
 
 class TableModel(QAbstractTableModel):
     def __init__(self, parent=None):
         QAbstractTableModel.__init__(self, parent)
-        self.data = None
+        self.data = TableData('', '')
 
     def changeData(self, new_data):
         self.data = new_data
@@ -130,7 +129,7 @@ class TableModel(QAbstractTableModel):
 class Installer(QWidget):
 
     class State(Enum):
-        UNKNOWN = auto()  # переходное состояние
+        QUEUED = auto()  # переходное состояние
         DEFAULT = auto()  # по умолчанию: всё disabled, кроме button_browse
         PREPARING = auto()  # скачивание/распаковка дистрибутива: всё disabled, кроме browse>stop
         PREPARED = auto()  # дистрибутив распакован: stop>browse, конфигурации, остальное заблокировано
@@ -178,56 +177,62 @@ class Installer(QWidget):
 
             def paint(self, painter, option, index):
                 host = index.data()
-                if host.state == Host.State.BASE_INSTALLING_DESTINATION:
-                    text = 'Копирование base... %s' % helpers.seconds_to_human(host.base_timer)
-                    color = '#f4f928'
-                elif host.state == Host.State.BASE_SUCCESS or host.state == Host.State.BASE_INSTALLING_SOURCE:
-                    text = 'Установлен base %s' % helpers.seconds_to_human(host.base_timer)
-                    color = '#c5f31f'
-                elif host.state == Host.State.CONF_SUCCESS:
-                    text = 'Установлен base %s, conf' % helpers.seconds_to_human(host.base_timer)
-                    color = '#94ed17'
-                elif host.state == Host.State.PRE_SUCCESS:
-                    text = 'Установлен base, conf; выполнен pre-скрипт'
-                    color = '#63e60f'
-                elif host.state == Host.State.MD5_RUNNING:
-                    text = 'Установлен base %s' % helpers.seconds_to_human(host.base_timer)
-                    if host.conf_state == Host.State.CONF_SUCCESS:
-                        text += '; conf'
-                    if host.pre_state == Host.State.PRE_SUCCESS:
-                        text += '; pre-скрипт выполнен'
-                    text += '; проверка md5... %s' % helpers.seconds_to_human(host.verify_timer)
-                    color = '#63e60f'
-                elif host.state == Host.State.SUCCESS:
-                    text = 'Установлен base %s' % helpers.seconds_to_human(host.base_timer)
-                    if host.conf_state == Host.State.CONF_SUCCESS:
-                        text += '; conf'
-                    if host.pre_state == Host.State.PRE_SUCCESS:
-                        text += '; pre-скрипт выполнен'
-                    text += '; проверка md5 %s — УСПЕХ' % helpers.seconds_to_human(host.verify_timer)
-                    color = '#00eb00'
-                elif host.state == Host.State.FAILURE:
-                    text = 'ОШИБКА'
-                    color = '#ff5533'
-                elif host.state == Host.State.CANCELING:
-                    text = 'Остановка процесса...'
-                    color = '#ffaa33'
-                elif host.state == Host.State.IDLE:
-                    text = 'Кликните, чтобы запустить только этот хост'
-                    color = '#ffffff'
-                elif host.state == Host.State.UNKNOWN:
-                    text = 'Поставлен в очередь на установку'
-                    color = '#ffffff'
+                if host.checked:
+                    pen_color = '#000'
+                    if host.state == Host.State.BASE_INSTALLING_DESTINATION:
+                        text = 'Копирование base... %s' % helpers.seconds_to_human(host.base_timer)
+                        background_color = '#f4f928'
+                    elif host.state == Host.State.BASE_SUCCESS or host.state == Host.State.BASE_INSTALLING_SOURCE:
+                        text = 'Установлен base %s' % helpers.seconds_to_human(host.base_timer)
+                        background_color = '#c5f31f'
+                    elif host.state == Host.State.CONF_SUCCESS:
+                        text = 'Установлен base %s, conf' % helpers.seconds_to_human(host.base_timer)
+                        background_color = '#94ed17'
+                    elif host.state == Host.State.PRE_SUCCESS:
+                        text = 'Установлен base, conf; выполнен pre-скрипт'
+                        background_color = '#63e60f'
+                    elif host.state == Host.State.MD5_RUNNING:
+                        text = 'Установлен base %s' % helpers.seconds_to_human(host.base_timer)
+                        if host.conf_state == Host.State.CONF_SUCCESS:
+                            text += '; conf'
+                        if host.pre_state == Host.State.PRE_SUCCESS:
+                            text += '; pre-скрипт выполнен'
+                        text += '; проверка md5... %s' % helpers.seconds_to_human(host.verify_timer)
+                        background_color = '#63e60f'
+                    elif host.state == Host.State.SUCCESS:
+                        text = 'Установлен base %s' % helpers.seconds_to_human(host.base_timer)
+                        if host.conf_state == Host.State.CONF_SUCCESS:
+                            text += '; conf'
+                        if host.pre_state == Host.State.PRE_SUCCESS:
+                            text += '; pre-скрипт выполнен'
+                        text += '; проверка md5 %s — УСПЕХ' % helpers.seconds_to_human(host.verify_timer)
+                        background_color = '#00eb00'
+                    elif host.state == Host.State.FAILURE:
+                        text = 'ОШИБКА'
+                        background_color = '#ff5533'
+                    elif host.state == Host.State.CANCELING:
+                        text = 'Остановка процесса...'
+                        background_color = '#ffaa33'
+                    elif host.state == Host.State.IDLE:
+                        text = 'Кликните, чтобы запустить только этот хост'
+                        background_color = '#ffffff'
+                    elif host.state == Host.State.QUEUED:
+                        text = 'Поставлен в очередь на установку'
+                        background_color = '#ffffff'
+                    else:
+                        text = 'Этого режима быть не должно'
+                        background_color = '#ffffff'
                 else:
-                    text = 'Этого режима быть не должно'
-                    color = '#ffffff'
+                    pen_color = '#ccc'
+                    text = 'Игнорируется'
+                    background_color = '#ffffff'
                 text = '  ' + host.hostname + '    ' + text
                 painter.save()
                 font = painter.font()
                 font.setPointSize(font.pointSize() * 1.5)
                 painter.setFont(font)
-                painter.setPen(PyQt5.QtGui.QPen(PyQt5.QtGui.QColor("#000" if host.checked else "#ccc")))
-                painter.fillRect(option.rect, PyQt5.QtGui.QColor(color))
+                painter.setPen(PyQt5.QtGui.QPen(PyQt5.QtGui.QColor(pen_color)))
+                painter.fillRect(option.rect, PyQt5.QtGui.QColor(background_color))
                 painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignVCenter | PyQt5.QtCore.Qt.AlignLeft, text)
                 painter.restore()
 
@@ -237,7 +242,9 @@ class Installer(QWidget):
 
         self.messages = []
         self.console = PyQt5.QtWidgets.QTextBrowser()
-        
+
+        self.distribution = None
+
         self.table = QTableView()
         self.table.setModel(TableModel())
         self.table.setItemDelegateForColumn(0, FirstColumnDelegate(self))
@@ -249,10 +256,9 @@ class Installer(QWidget):
         self.table.verticalHeader().setVisible(False)    # Отключение нумерации
         self.table.horizontalHeader().setVisible(False)  # ячеек
 
-        self.distribution = None
-
         self.configurations = []
         self.table_data_dict = {}
+
         self.pre_install_scripts_dict = {}
 
         self.prepare_message = ''
@@ -319,6 +325,14 @@ class Installer(QWidget):
         self.state_changed.emit()
         self.window_title_changed.emit()
 
+        def discover_lan_hosts():
+            while True:
+                if not threading.main_thread().is_alive():
+                    return
+                self.merge_hosts_from_discovered(helpers.discover_lan_hosts())
+                time.sleep(5)
+        threading.Thread(target=discover_lan_hosts).start()
+
     def on_message_appeared(self, message):
         print(message)
         self.console.append(message)
@@ -331,7 +345,6 @@ class Installer(QWidget):
             self.configurations_list.setDisabled(True)
             self.installation_path.setDisabled(True)
             self.button_start_stop.setDisabled(True)
-            self.table.setDisabled(True)
             self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
             self.button_browse.setEnabled(True)
             self.pre_install_scripts_combo.setDisabled(True)
@@ -340,7 +353,6 @@ class Installer(QWidget):
             self.configurations_list.setDisabled(True)
             self.installation_path.setDisabled(True)
             self.button_start_stop.setDisabled(True)
-            self.table.setDisabled(True)
             self.button_browse.setText('❌ Отменить')
             self.button_browse.setEnabled(True)
             self.pre_install_scripts_combo.setDisabled(True)
@@ -355,7 +367,6 @@ class Installer(QWidget):
             self.configurations_list.selectionModel().currentChanged.connect(self.on_conf_selected)
             self.pre_install_scripts_combo.setDisabled(True)
             self.button_start_stop.setDisabled(True)
-            self.table.setEnabled(True)
             self.pre_install_scripts_combo.setDisabled(True)
 
             self.configurations_list.setMinimumWidth(
@@ -378,7 +389,6 @@ class Installer(QWidget):
                 self.pre_install_scripts_combo.setEnabled(True)
             self.button_start_stop.setText('➤ Старт')
             self.button_start_stop.setEnabled(True)
-            self.table.setEnabled(True)
 
         elif self.state == Installer.State.INSTALLING:
             self.button_browse.setDisabled(True)
@@ -386,7 +396,6 @@ class Installer(QWidget):
             self.installation_path.setDisabled(True)
             self.button_start_stop.setText('❌ Стоп')
             self.button_start_stop.setEnabled(True)
-            self.table.setEnabled(True)
 
     def on_clicked_table(self, index):
         column = index.column()
@@ -395,14 +404,14 @@ class Installer(QWidget):
             host.checked = not host.checked
         elif column == 1:
             if host.state == Host.State.IDLE:
-                host.state = Host.State.UNKNOWN
+                host.state = Host.State.QUEUED
                 self.worker_needed.emit()
             else:
-                if host.state == Host.State.UNKNOWN:
+                if host.state == Host.State.QUEUED:
                     host.state = Host.State.IDLE
                 else:
                     if host.state == Host.State.SUCCESS:
-                        host.state = Host.State.UNKNOWN
+                        host.state = Host.State.QUEUED
                         self.worker_needed.emit()
                     else:
                         host.state = Host.State.CANCELING
@@ -423,7 +432,32 @@ class Installer(QWidget):
         self.on_pre_install_scripts_combo_changed(0)
 
         # Выставляем новые данные в правой панели
-        self.table.model().changeData(self.table_data_dict[key])
+        self.table.model().changeData(self.merge_hosts_from_configuration(key))
+
+    def merge_hosts_from_configuration(self, key):
+        pass
+        '''m = TableData('', '')
+
+for host in [self.table.model().data.hosts]:
+    if not host in self.hosts_discovered:
+
+#self.table.model().changeData(new_data)
+if self.table.model().data:
+for host in [self.table.model().data.hosts]:
+pass
+else:
+table_model = TableData(os.path.dirname(base_txt), destination)
+for hostname in os.listdir(os.path.join(conf, name)):
+if (hostname == 'common' or
+        not os.path.isdir(os.path.join(conf, name, hostname))):
+    continue
+table_data.add_host(hostname)
+'''
+    def merge_hosts_from_discovered(self, hosts):
+        for host in hosts:
+            if host not in [host.hostname for host in self.table.model().data.hosts]:
+                self.table.model().data.add_host(host, checked=False)
+        self.table_changed.emit()
 
     def on_pre_install_scripts_combo_changed(self, index):  # Выбрали мышкой pre-install скрипт
         # Возможные варианты list:
@@ -490,7 +524,7 @@ class Installer(QWidget):
         threading.Thread(target=timer).start()
         for host in [host for host in self.table.model().data.hosts if host.checked]:
             if host.state == Host.State.IDLE:
-                host.state = Host.State.UNKNOWN
+                host.state = Host.State.QUEUED
         self.worker_needed.emit()
 
     def on_clicked_button_console(self):
@@ -673,7 +707,7 @@ class Installer(QWidget):
             if source_host.state == Host.State.BASE_SUCCESS:
                 have_source_host = True
                 for destination_host in [host for host in self.table.model().data.hosts if host.checked]:
-                    if destination_host.state == Host.State.UNKNOWN:
+                    if destination_host.state == Host.State.QUEUED:
                         source_host.state = Host.State.BASE_INSTALLING_SOURCE
                         destination_host.state = Host.State.BASE_INSTALLING_DESTINATION
                         threading.Thread(target=self.do_copy_base, args=(source_host, destination_host)).start()
@@ -686,7 +720,7 @@ class Installer(QWidget):
                     break
         if not have_source_host:
             for destination_host in [host for host in self.table.model().data.hosts if host.checked]:
-                if destination_host.state == destination_host.state.UNKNOWN:
+                if destination_host.state == destination_host.state.QUEUED:
                     destination_host.state = Host.State.BASE_INSTALLING_DESTINATION
                     threading.Thread(target=self.do_copy_base, args=(None, destination_host)).start()
                     any_base_copy_started = True
@@ -696,12 +730,12 @@ class Installer(QWidget):
 
         # Копирование conf
 
-        # Если хотя бы один UNKNOWN, то значит ещё не везде ещё скопирован base - выходим.
+        # Если хотя бы один QUEUED, то значит ещё не везде ещё скопирован base - выходим.
         for host in [host for host in self.table.model().data.hosts if host.checked]:
-            if (host.state == Host.State.UNKNOWN or host.state == Host.State.BASE_INSTALLING_SOURCE
+            if (host.state == Host.State.QUEUED or host.state == Host.State.BASE_INSTALLING_SOURCE
                     or host.state == Host.State.BASE_INSTALLING_DESTINATION):
                 return
-        # Если нет ни одного UNKNOWN, значит все так или иначе прошли копирование base - поэтому ищем BASE_SUCCESS
+        # Если нет ни одного QUEUED, значит все так или иначе прошли копирование base - поэтому ищем BASE_SUCCESS
         # и ставим копирование conf.
         for host in [host for host in self.table.model().data.hosts if host.checked]:
             if host.state == Host.State.BASE_SUCCESS:
