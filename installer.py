@@ -38,7 +38,20 @@ class Logger(PyQt5.QtCore.QObject):
         super().__init__()
 
 
+class Distribution:
+    def __init__(self, uri):
+        self.uri = uri  # zip-дистрибутив или base.txt
+        self.base_txt = ''  # Полный путь к base.txt
+        self.configurations_dir = ''  # Полный путь к распакованному директории conf
+        self.name = ''  # Имя дистрибутива, например su30mki_skytech_develop_5420_conf_1991_skytech_0.14.12.5.383
+        self.base = ''
+        self.size = 0
+        self.prepare_timer = 0
+        self.overall_timer = 0  # <=0 - процесс не запущен, >0 - процесс идёт
+
+
 logger = Logger()
+distribution = None
 
 
 class Host:
@@ -137,18 +150,6 @@ class Installer(QWidget):
         PRE_INSTALL_SELECTED = auto()  # выбран скрипт pre-install, если есть
         INSTALLING = auto()  # установка: start>stop, остальное заблокировано
 
-    class Distribution:
-
-        def __init__(self, uri):
-            self.uri = uri  # zip-дистрибутив или base.txt
-            self.base_txt = ''  # Полный путь к base.txt
-            self.configurations_dir = ''  # Полный путь к распакованному директории conf
-            self.name = ''  # Имя дистрибутива, например su30mki_skytech_develop_5420_conf_1991_skytech_0.14.12.5.383
-            self.base = ''
-            self.size = 0
-            self.prepare_timer = 0
-            self.overall_timer = 0  # <=0 - процесс не запущен, >0 - процесс идёт
-
     configurations_changed = pyqtSignal()
     configuration_changed = pyqtSignal()
     state_changed = pyqtSignal()
@@ -224,7 +225,7 @@ class Installer(QWidget):
                         background_color = '#ffffff'
                 else:
                     pen_color = '#ccc'
-                    text = 'Игнорируется'
+                    text = ''
                     background_color = '#ffffff'
                 text = '  ' + host.hostname + '    ' + text
                 painter.save()
@@ -242,8 +243,6 @@ class Installer(QWidget):
 
         self.messages = []
         self.console = PyQt5.QtWidgets.QTextBrowser()
-
-        self.distribution = None
 
         self.table = QTableView()
         self.table.setModel(TableModel())
@@ -403,18 +402,21 @@ class Installer(QWidget):
         if column == 0:
             host.checked = not host.checked
         elif column == 1:
-            if host.state == Host.State.IDLE:
-                host.state = Host.State.QUEUED
-                self.worker_needed.emit()
-            else:
-                if host.state == Host.State.QUEUED:
-                    host.state = Host.State.IDLE
+            if host.checked:
+                if host.state == Host.State.IDLE:
+                    host.state = Host.State.QUEUED
+                    self.worker_needed.emit()
                 else:
-                    if host.state == Host.State.SUCCESS:
-                        host.state = Host.State.QUEUED
-                        self.worker_needed.emit()
+                    if host.state == Host.State.QUEUED:
+                        host.state = Host.State.IDLE
                     else:
-                        host.state = Host.State.CANCELING
+                        if host.state == Host.State.SUCCESS:
+                            host.state = Host.State.QUEUED
+                            self.worker_needed.emit()
+                        else:
+                            host.state = Host.State.CANCELING
+            else:
+                host.checked = True
         self.table_changed.emit()
 
     def on_conf_selected(self):  # Выбрали мышкой конфигурацию
@@ -513,13 +515,13 @@ table_data.add_host(hostname)
 
     def do_start_spider(self):
         def timer():
-            self.distribution.overall_timer = 1
-            while self.distribution.overall_timer > 0:
+            distribution.overall_timer = 1
+            while distribution.overall_timer > 0:
                 if not threading.main_thread().is_alive():
                     sys.exit()
                 self.window_title_changed.emit()
                 time.sleep(1)
-                self.distribution.overall_timer += 1
+                distribution.overall_timer += 1
 
         threading.Thread(target=timer).start()
         for host in [host for host in self.table.model().data.hosts if host.checked]:
@@ -554,7 +556,7 @@ table_data.add_host(hostname)
                         pass
         threading.Thread(target=timer).start()
         source_hostname = source_host.hostname if source_host else None
-        source_path = self.installation_path.text() if source_host else self.distribution.base
+        source_path = self.installation_path.text() if source_host else distribution.base
         r = helpers.copy_from_to(source_hostname, source_path, destination_host.hostname, self.installation_path.text(),
                                  mirror=True, identifiers=identifiers)
         if destination_host.state == Host.State.CANCELING:
@@ -580,8 +582,8 @@ table_data.add_host(hostname)
                 continue
             if host.state == Host.State.BASE_SUCCESS:
                 conf_name = self.configurations[self.configurations_list.currentIndex().row()]
-                for c in [os.path.join(self.distribution.configurations_dir, conf_name, 'common'),
-                          os.path.join(self.distribution.configurations_dir, conf_name, host.hostname)]:
+                for c in [os.path.join(distribution.configurations_dir, conf_name, 'common'),
+                          os.path.join(distribution.configurations_dir, conf_name, host.hostname)]:
                     if os.path.exists(c):
                         r = helpers.copy_from_to(None, c, host.hostname, self.installation_path.text())
                         if r:
@@ -595,7 +597,7 @@ table_data.add_host(hostname)
         self.worker_needed.emit()
 
     def do_run_pre_script(self):
-        s = os.path.join(self.distribution.configurations_dir,
+        s = os.path.join(distribution.configurations_dir,
                          self.configurations[self.configurations_list.currentIndex().row()],
                          'common', 'etc',
                          self.pre_install_scripts_combo.currentText())
@@ -766,7 +768,7 @@ table_data.add_host(hostname)
             if host.state != Host.State.SUCCESS:
                 return
 
-        self.distribution.overall_timer = -self.distribution.overall_timer
+        distribution.overall_timer = -distribution.overall_timer
         self.window_title_changed.emit()
 
     def prepare_distribution(self, uri):
@@ -780,10 +782,10 @@ table_data.add_host(hostname)
                     sys.exit()
                 self.state_changed.emit()
                 time.sleep(1)
-                self.distribution.prepare_timer += 1
+                distribution.prepare_timer += 1
                 self.window_title_changed.emit()
 
-        self.distribution = Installer.Distribution(uri)
+        distribution = Installer.Distribution(uri)
         self.prepare_message = ''
         self.prepare_process_download = None
         self.prepare_process_unzip = None
@@ -840,23 +842,23 @@ table_data.add_host(hostname)
 
         configurations_dir = os.path.abspath(os.path.join(os.path.dirname(base_txt), '..', 'conf'))
         if os.path.isdir(configurations_dir):
-            self.distribution.configurations_dir = configurations_dir
+            distribution.configurations_dir = configurations_dir
         for line in open(base_txt, errors='ignore').readlines():
             if line.startswith('name '):
-                self.distribution.name = line.split(' ')[1].strip()
+                distribution.name = line.split(' ')[1].strip()
                 continue
-        if not self.distribution.name:
-            self.distribution.name = os.path.basename(self.distribution.uri)
-        self.distribution.base_txt = base_txt
-        self.distribution.base = os.path.dirname(self.distribution.base_txt)
+        if not distribution.name:
+            distribution.name = os.path.basename(distribution.uri)
+        distribution.base_txt = base_txt
+        distribution.base = os.path.dirname(distribution.base_txt)
 
         def get_path_size():
-            for dirpath, dirnames, filenames in os.walk(self.distribution.base):
+            for dirpath, dirnames, filenames in os.walk(distribution.base):
                 for f in filenames:
                     fp = os.path.join(dirpath, f)
-                    self.distribution.size += os.path.getsize(fp)
+                    distribution.size += os.path.getsize(fp)
                     self.window_title_changed.emit()
-            self.distribution.size = -self.distribution.size
+            distribution.size = -distribution.size
             self.window_title_changed.emit()
         threading.Thread(target=get_path_size).start()
 
@@ -885,31 +887,31 @@ table_data.add_host(hostname)
     def on_title_changed(self):
         title = QCoreApplication.applicationName() + ' ' + self.version
 
-        if not self.distribution:  # Самый первый запуск, никакой дистрибутив ещё не открыт.
+        if not distribution:  # Самый первый запуск, никакой дистрибутив ещё не открыт.
             self.setWindowTitle(title)
             return
 
-        if not self.distribution.name:  # Имя дистрибутива ещё не доступно - занчит происходит его открытие
-            title += ' • Распаковка: ' + self.distribution.uri + '... ' \
-                     + helpers.seconds_to_human(self.distribution.prepare_timer)
+        if not distribution.name:  # Имя дистрибутива ещё не доступно - занчит происходит его открытие
+            title += ' • Распаковка: ' + distribution.uri + '... ' \
+                     + helpers.seconds_to_human(distribution.prepare_timer)
             self.setWindowTitle(title)
             return
 
-        title += ' • Дистрибутив: ' + self.distribution.name
+        title += ' • Дистрибутив: ' + distribution.name
 
-        if self.distribution.uri.endswith('.zip'):
-            title += ' (распакован за %s' % helpers.seconds_to_human(self.distribution.prepare_timer)
+        if distribution.uri.endswith('.zip'):
+            title += ' (распакован за %s' % helpers.seconds_to_human(distribution.prepare_timer)
         else:
             title += ' (без распаковки'
 
-        title += ', '+helpers.bytes_to_human(abs(self.distribution.size))
-        if self.distribution.size > 0:
+        title += ', '+helpers.bytes_to_human(abs(distribution.size))
+        if distribution.size > 0:
             title += '...'
         title += ')'
 
-        if self.distribution.overall_timer > 0:
-            title += ' • Установка... '+helpers.seconds_to_human(self.distribution.overall_timer)
-        elif self.distribution.overall_timer < 0:
-            title += ' • Установлено за ' + helpers.seconds_to_human(abs(self.distribution.overall_timer))
+        if distribution.overall_timer > 0:
+            title += ' • Установка... '+helpers.seconds_to_human(distribution.overall_timer)
+        elif distribution.overall_timer < 0:
+            title += ' • Установлено за ' + helpers.seconds_to_human(abs(distribution.overall_timer))
 
         self.setWindowTitle(title)
