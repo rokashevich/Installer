@@ -27,7 +27,6 @@ sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import helpers
 from globals import Globals
 
-
 timestamp = datetime.datetime.now()
 
 
@@ -38,20 +37,7 @@ class Logger(PyQt5.QtCore.QObject):
         super().__init__()
 
 
-class Distribution:
-    def __init__(self, uri):
-        self.uri = uri  # zip-дистрибутив или base.txt
-        self.base_txt = ''  # Полный путь к base.txt
-        self.configurations_dir = ''  # Полный путь к распакованному директории conf
-        self.name = ''  # Имя дистрибутива, например su30mki_skytech_develop_5420_conf_1991_skytech_0.14.12.5.383
-        self.base = ''
-        self.size = 0
-        self.prepare_timer = 0
-        self.overall_timer = 0  # <=0 - процесс не запущен, >0 - процесс идёт
-
-
 logger = Logger()
-distribution = None
 
 
 class Host:
@@ -79,9 +65,10 @@ class Host:
         FAILURE = auto()
         CANCELING = auto()
 
+
 class TableData:
     class Host:
-        def __init__(self, hostname, checked):
+        def __init__(self, hostname, checked=True):
             self.hostname = hostname
             self.checked = checked
             self.base_timer = -1
@@ -130,7 +117,7 @@ class TableModel(QAbstractTableModel):
 
     def data(self, index, role):
         if not index.isValid():
-             return QVariant()
+            return QVariant()
         elif role != Qt.DisplayRole:
             return QVariant()
         elif index.column() == 0:  # checked
@@ -140,7 +127,6 @@ class TableModel(QAbstractTableModel):
 
 
 class Installer(QWidget):
-
     class State(Enum):
         QUEUED = auto()  # переходное состояние
         DEFAULT = auto()  # по умолчанию: всё disabled, кроме button_browse
@@ -150,6 +136,18 @@ class Installer(QWidget):
         PRE_INSTALL_SELECTED = auto()  # выбран скрипт pre-install, если есть
         INSTALLING = auto()  # установка: start>stop, остальное заблокировано
 
+    class Distribution:
+
+        def __init__(self, uri):
+            self.uri = uri  # zip-дистрибутив или base.txt
+            self.base_txt = ''  # Полный путь к base.txt
+            self.configurations_dir = ''  # Полный путь к распакованному директории conf
+            self.name = ''  # Имя дистрибутива, например su30mki_skytech_develop_5420_conf_1991_skytech_0.14.12.5.383
+            self.base = ''
+            self.size = 0
+            self.prepare_timer = 0
+            self.overall_timer = 0  # <=0 - процесс не запущен, >0 - процесс идёт
+
     configurations_changed = pyqtSignal()
     configuration_changed = pyqtSignal()
     state_changed = pyqtSignal()
@@ -157,7 +155,7 @@ class Installer(QWidget):
     table_changed = pyqtSignal()
     worker_needed = pyqtSignal()
     window_title_changed = pyqtSignal()
-    
+
     def __init__(self):
         class FirstColumnDelegate(PyQt5.QtWidgets.QStyledItemDelegate):
             def __init__(self, parent):
@@ -167,9 +165,11 @@ class Installer(QWidget):
                 painter.save()
                 font = painter.font()
                 font.setPointSize(font.pointSize() * 1.5)
+                painter.fillRect(option.rect, PyQt5.QtGui.QColor('#fff'))
                 painter.setFont(font)
-                painter.setPen(PyQt5.QtGui.QPen(PyQt5.QtGui.QColor("#000" if index.data().checked else "#ccc")))
-                painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignVCenter | PyQt5.QtCore.Qt.AlignCenter, str(index.row()+1))
+                painter.setPen(PyQt5.QtGui.QPen(PyQt5.QtGui.QColor('#000' if index.data().checked else '#b4b0aa')))
+                painter.drawText(option.rect, PyQt5.QtCore.Qt.AlignVCenter | PyQt5.QtCore.Qt.AlignCenter,
+                                 str(index.row() + 1))
                 painter.restore()
 
         class SecondColumnDelegate(PyQt5.QtWidgets.QStyledItemDelegate):
@@ -224,8 +224,8 @@ class Installer(QWidget):
                         text = 'Этого режима быть не должно'
                         background_color = '#ffffff'
                 else:
-                    pen_color = '#ccc'
-                    text = ''
+                    pen_color = '#b4b0aa'
+                    text = '-'
                     background_color = '#ffffff'
                 text = '  ' + host.hostname + '    ' + text
                 painter.save()
@@ -244,15 +244,17 @@ class Installer(QWidget):
         self.messages = []
         self.console = PyQt5.QtWidgets.QTextBrowser()
 
+        self.distribution = None
+
         self.table = QTableView()
         self.table.setModel(TableModel())
         self.table.setItemDelegateForColumn(0, FirstColumnDelegate(self))
         self.table.setItemDelegateForColumn(1, SecondColumnDelegate(self))
         self.table.horizontalHeader().setSectionResizeMode(0, PyQt5.QtWidgets.QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, PyQt5.QtWidgets.QHeaderView.Stretch)
-        self.table.setFocusPolicy(PyQt5.QtCore.Qt.NoFocus)                          # Отключение выделения ячеек
+        self.table.setFocusPolicy(PyQt5.QtCore.Qt.NoFocus)  # Отключение выделения ячеек
         self.table.setSelectionMode(PyQt5.QtWidgets.QAbstractItemView.NoSelection)  # при нажатии
-        self.table.verticalHeader().setVisible(False)    # Отключение нумерации
+        self.table.verticalHeader().setVisible(False)  # Отключение нумерации
         self.table.horizontalHeader().setVisible(False)  # ячеек
 
         self.configurations = []
@@ -286,13 +288,13 @@ class Installer(QWidget):
         # If rowSpan and/or columnSpan is -1, then the widget will extend to the bottom and/or right edge, respectively.
         # https://doc.qt.io/qt-5/qgridlayout.html#addWidget-2
 
-        gl.addWidget(self.button_browse,             0, 0, 1, 1)
-        gl.addWidget(self.button_start_stop,         0, 1, 1, 1)
-        gl.addWidget(self.button_console,            0, 2, 1, 1)
-        gl.addWidget(self.configurations_list,       1, 0, 1, 3)
-        gl.addWidget(self.installation_path,         2, 0, 1, 3)
+        gl.addWidget(self.button_browse, 0, 0, 1, 1)
+        gl.addWidget(self.button_start_stop, 0, 1, 1, 1)
+        gl.addWidget(self.button_console, 0, 2, 1, 1)
+        gl.addWidget(self.configurations_list, 1, 0, 1, 3)
+        gl.addWidget(self.installation_path, 2, 0, 1, 3)
         gl.addWidget(self.pre_install_scripts_combo, 3, 0, 1, 3)
-        gl.addWidget(self.stacked,                   0, 3,-1, 1)
+        gl.addWidget(self.stacked, 0, 3, -1, 1)
 
         self.setLayout(gl)
 
@@ -330,6 +332,7 @@ class Installer(QWidget):
                     return
                 self.merge_hosts_from_discovered(helpers.discover_lan_hosts())
                 time.sleep(5)
+
         threading.Thread(target=discover_lan_hosts).start()
 
     def on_message_appeared(self, message):
@@ -347,6 +350,7 @@ class Installer(QWidget):
             self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
             self.button_browse.setEnabled(True)
             self.pre_install_scripts_combo.setDisabled(True)
+            self.table.setDisabled(True)
 
         elif self.state == Installer.State.PREPARING:
             self.configurations_list.setDisabled(True)
@@ -355,6 +359,7 @@ class Installer(QWidget):
             self.button_browse.setText('❌ Отменить')
             self.button_browse.setEnabled(True)
             self.pre_install_scripts_combo.setDisabled(True)
+            self.table.setDisabled(True)
 
         # Распакован архив
         elif self.state == Installer.State.PREPARED:
@@ -366,20 +371,20 @@ class Installer(QWidget):
             self.configurations_list.selectionModel().currentChanged.connect(self.on_conf_selected)
             self.pre_install_scripts_combo.setDisabled(True)
             self.button_start_stop.setDisabled(True)
-            self.pre_install_scripts_combo.setDisabled(True)
 
             self.configurations_list.setMinimumWidth(
                 self.configurations_list.sizeHintForColumn(0)
                 + 2 * self.configurations_list.frameWidth()
             )
 
+            self.table.setDisabled(True)
             self.window_title_changed.emit()
 
         # Выбран pre-install
         elif self.state == Installer.State.PRE_INSTALL_SELECTED:
             combo_list = self.pre_install_scripts_dict[
-                 self.configurations[
-                     self.configurations_list.currentIndex().row()]]
+                self.configurations[
+                    self.configurations_list.currentIndex().row()]]
             if not combo_list:
                 self.pre_install_scripts_combo.setEnabled(False)
             elif len(combo_list) == 1:
@@ -388,6 +393,7 @@ class Installer(QWidget):
                 self.pre_install_scripts_combo.setEnabled(True)
             self.button_start_stop.setText('➤ Старт')
             self.button_start_stop.setEnabled(True)
+            self.table.setEnabled(True)
 
         elif self.state == Installer.State.INSTALLING:
             self.button_browse.setDisabled(True)
@@ -395,6 +401,7 @@ class Installer(QWidget):
             self.installation_path.setDisabled(True)
             self.button_start_stop.setText('❌ Стоп')
             self.button_start_stop.setEnabled(True)
+            self.table.setEnabled(True)
 
     def on_clicked_table(self, index):
         column = index.column()
@@ -402,21 +409,18 @@ class Installer(QWidget):
         if column == 0:
             host.checked = not host.checked
         elif column == 1:
-            if host.checked:
-                if host.state == Host.State.IDLE:
-                    host.state = Host.State.QUEUED
-                    self.worker_needed.emit()
-                else:
-                    if host.state == Host.State.QUEUED:
-                        host.state = Host.State.IDLE
-                    else:
-                        if host.state == Host.State.SUCCESS:
-                            host.state = Host.State.QUEUED
-                            self.worker_needed.emit()
-                        else:
-                            host.state = Host.State.CANCELING
+            if host.state == Host.State.IDLE:
+                host.state = Host.State.QUEUED
+                self.worker_needed.emit()
             else:
-                host.checked = True
+                if host.state == Host.State.QUEUED:
+                    host.state = Host.State.IDLE
+                else:
+                    if host.state == Host.State.SUCCESS:
+                        host.state = Host.State.QUEUED
+                        self.worker_needed.emit()
+                    else:
+                        host.state = Host.State.CANCELING
         self.table_changed.emit()
 
     def on_conf_selected(self):  # Выбрали мышкой конфигурацию
@@ -434,27 +438,24 @@ class Installer(QWidget):
         self.on_pre_install_scripts_combo_changed(0)
 
         # Выставляем новые данные в правой панели
-        self.table.model().changeData(self.merge_hosts_from_configuration(key))
+        self.merge_hosts_from_configuration(key)
 
     def merge_hosts_from_configuration(self, key):
-        pass
-        '''m = TableData('', '')
+        new_hostnames = []
+        for new_host in self.table_data_dict[key].hosts:
+            same_existing_host = None
+            for present_host in self.table.model().data.hosts:
+                if new_host.hostname == present_host.hostname:
+                    same_existing_host = present_host
+                    break
+            if same_existing_host:
+                same_existing_host.checked = True
+            else:
+                new_hostnames.append(new_host.hostname)
+        for new_hostname in new_hostnames:
+            self.table.model().data.add_host(new_hostname)
+        self.table_changed.emit()
 
-for host in [self.table.model().data.hosts]:
-    if not host in self.hosts_discovered:
-
-#self.table.model().changeData(new_data)
-if self.table.model().data:
-for host in [self.table.model().data.hosts]:
-pass
-else:
-table_model = TableData(os.path.dirname(base_txt), destination)
-for hostname in os.listdir(os.path.join(conf, name)):
-if (hostname == 'common' or
-        not os.path.isdir(os.path.join(conf, name, hostname))):
-    continue
-table_data.add_host(hostname)
-'''
     def merge_hosts_from_discovered(self, hosts):
         for host in hosts:
             if host not in [host.hostname for host in self.table.model().data.hosts]:
@@ -483,11 +484,13 @@ table_data.add_host(hostname)
             self.pre_install_scripts_combo.setDisabled(True)
         # Активируем/деактивируем кнопку СТАРТ
         if (len(list) == 1  # Вариант 1
-                or (len(list) == 2)  # Вариант 2
-                or (len(list) > 3) and index != 0):
+            or (len(list) == 2)  # Вариант 2
+            or (len(list) > 3) and index != 0):
             self.button_start_stop.setEnabled(True)
+            self.table.setEnabled(True)
         else:
             self.button_start_stop.setEnabled(False)
+            self.table.setEnabled(False)
 
     def on_clicked_button_browse(self):
         if not self.state == Installer.State.PREPARING:
@@ -515,13 +518,13 @@ table_data.add_host(hostname)
 
     def do_start_spider(self):
         def timer():
-            distribution.overall_timer = 1
-            while distribution.overall_timer > 0:
+            self.distribution.overall_timer = 1
+            while self.distribution.overall_timer > 0:
                 if not threading.main_thread().is_alive():
                     sys.exit()
                 self.window_title_changed.emit()
                 time.sleep(1)
-                distribution.overall_timer += 1
+                self.distribution.overall_timer += 1
 
         threading.Thread(target=timer).start()
         for host in [host for host in self.table.model().data.hosts if host.checked]:
@@ -554,9 +557,10 @@ table_data.add_host(hostname)
                         identifier.kill()
                     except:
                         pass
+
         threading.Thread(target=timer).start()
         source_hostname = source_host.hostname if source_host else None
-        source_path = self.installation_path.text() if source_host else distribution.base
+        source_path = self.installation_path.text() if source_host else self.distribution.base
         r = helpers.copy_from_to(source_hostname, source_path, destination_host.hostname, self.installation_path.text(),
                                  mirror=True, identifiers=identifiers)
         if destination_host.state == Host.State.CANCELING:
@@ -581,23 +585,25 @@ table_data.add_host(hostname)
                 self.table_changed.emit()
                 continue
             if host.state == Host.State.BASE_SUCCESS:
+                success = True
                 conf_name = self.configurations[self.configurations_list.currentIndex().row()]
-                for c in [os.path.join(distribution.configurations_dir, conf_name, 'common'),
-                          os.path.join(distribution.configurations_dir, conf_name, host.hostname)]:
+                for c in [os.path.join(self.distribution.configurations_dir, conf_name, 'common'),
+                          os.path.join(self.distribution.configurations_dir, conf_name, host.hostname)]:
                     if os.path.exists(c):
                         r = helpers.copy_from_to(None, c, host.hostname, self.installation_path.text())
                         if r:
                             logger.message_appeared.emit('*** Ошибка копирования conf: ' + r)
+                            success = False
                             break
-                if r:
-                    host.state = host.conf_state = Host.State.FAILURE
-                else:
+                if success:
                     host.state = host.conf_state = Host.State.CONF_SUCCESS
+                else:
+                    host.state = host.conf_state = Host.State.FAILURE
                 self.table_changed.emit()
         self.worker_needed.emit()
 
     def do_run_pre_script(self):
-        s = os.path.join(distribution.configurations_dir,
+        s = os.path.join(self.distribution.configurations_dir,
                          self.configurations[self.configurations_list.currentIndex().row()],
                          'common', 'etc',
                          self.pre_install_scripts_combo.currentText())
@@ -641,6 +647,7 @@ table_data.add_host(hostname)
                 host.verify_timer += 1
                 self.table_changed.emit()
                 time.sleep(1)
+
         threading.Thread(target=timer).start()
 
         # 1 TODO: потом сделаю
@@ -735,7 +742,7 @@ table_data.add_host(hostname)
         # Если хотя бы один QUEUED, то значит ещё не везде ещё скопирован base - выходим.
         for host in [host for host in self.table.model().data.hosts if host.checked]:
             if (host.state == Host.State.QUEUED or host.state == Host.State.BASE_INSTALLING_SOURCE
-                    or host.state == Host.State.BASE_INSTALLING_DESTINATION):
+                or host.state == Host.State.BASE_INSTALLING_DESTINATION):
                 return
         # Если нет ни одного QUEUED, значит все так или иначе прошли копирование base - поэтому ищем BASE_SUCCESS
         # и ставим копирование conf.
@@ -768,7 +775,7 @@ table_data.add_host(hostname)
             if host.state != Host.State.SUCCESS:
                 return
 
-        distribution.overall_timer = -distribution.overall_timer
+        self.distribution.overall_timer = -self.distribution.overall_timer
         self.window_title_changed.emit()
 
     def prepare_distribution(self, uri):
@@ -782,10 +789,10 @@ table_data.add_host(hostname)
                     sys.exit()
                 self.state_changed.emit()
                 time.sleep(1)
-                distribution.prepare_timer += 1
+                self.distribution.prepare_timer += 1
                 self.window_title_changed.emit()
 
-        distribution = Installer.Distribution(uri)
+        self.distribution = Installer.Distribution(uri)
         self.prepare_message = ''
         self.prepare_process_download = None
         self.prepare_process_unzip = None
@@ -820,7 +827,7 @@ table_data.add_host(hostname)
                 table_data = TableData(os.path.dirname(base_txt), destination)
                 for hostname in os.listdir(os.path.join(conf, name)):
                     if (hostname == 'common' or
-                       not os.path.isdir(os.path.join(conf, name, hostname))):
+                            not os.path.isdir(os.path.join(conf, name, hostname))):
                         continue
                     table_data.add_host(hostname)
                 self.configurations.append(name)
@@ -835,31 +842,32 @@ table_data.add_host(hostname)
                     self.pre_install_scripts_dict[name] = g + ["Не выполнять pre-скрипт"]
                 else:  # больше одного скрипта
                     self.pre_install_scripts_dict[name] = ["Выбрать pre-скрипт"] + g \
-                                                                     + ["Не выполнять pre-скрипт"]
+                                                          + ["Не выполнять pre-скрипт"]
 
         self.configurations.sort()
         self.configurations_changed.emit()
 
         configurations_dir = os.path.abspath(os.path.join(os.path.dirname(base_txt), '..', 'conf'))
         if os.path.isdir(configurations_dir):
-            distribution.configurations_dir = configurations_dir
+            self.distribution.configurations_dir = configurations_dir
         for line in open(base_txt, errors='ignore').readlines():
             if line.startswith('name '):
-                distribution.name = line.split(' ')[1].strip()
+                self.distribution.name = line.split(' ')[1].strip()
                 continue
-        if not distribution.name:
-            distribution.name = os.path.basename(distribution.uri)
-        distribution.base_txt = base_txt
-        distribution.base = os.path.dirname(distribution.base_txt)
+        if not self.distribution.name:
+            self.distribution.name = os.path.basename(self.distribution.uri)
+        self.distribution.base_txt = base_txt
+        self.distribution.base = os.path.dirname(self.distribution.base_txt)
 
         def get_path_size():
-            for dirpath, dirnames, filenames in os.walk(distribution.base):
+            for dirpath, dirnames, filenames in os.walk(self.distribution.base):
                 for f in filenames:
                     fp = os.path.join(dirpath, f)
-                    distribution.size += os.path.getsize(fp)
+                    self.distribution.size += os.path.getsize(fp)
                     self.window_title_changed.emit()
-            distribution.size = -distribution.size
+            self.distribution.size = -self.distribution.size
             self.window_title_changed.emit()
+
         threading.Thread(target=get_path_size).start()
 
         self.state = Installer.State.PREPARED
@@ -887,31 +895,31 @@ table_data.add_host(hostname)
     def on_title_changed(self):
         title = QCoreApplication.applicationName() + ' ' + self.version
 
-        if not distribution:  # Самый первый запуск, никакой дистрибутив ещё не открыт.
+        if not self.distribution:  # Самый первый запуск, никакой дистрибутив ещё не открыт.
             self.setWindowTitle(title)
             return
 
-        if not distribution.name:  # Имя дистрибутива ещё не доступно - занчит происходит его открытие
-            title += ' • Распаковка: ' + distribution.uri + '... ' \
-                     + helpers.seconds_to_human(distribution.prepare_timer)
+        if not self.distribution.name:  # Имя дистрибутива ещё не доступно - занчит происходит его открытие
+            title += ' • Распаковка: ' + self.distribution.uri + '... ' \
+                     + helpers.seconds_to_human(self.distribution.prepare_timer)
             self.setWindowTitle(title)
             return
 
-        title += ' • Дистрибутив: ' + distribution.name
+        title += ' • Дистрибутив: ' + self.distribution.name
 
-        if distribution.uri.endswith('.zip'):
-            title += ' (распакован за %s' % helpers.seconds_to_human(distribution.prepare_timer)
+        if self.distribution.uri.endswith('.zip'):
+            title += ' (распакован за %s' % helpers.seconds_to_human(self.distribution.prepare_timer)
         else:
             title += ' (без распаковки'
 
-        title += ', '+helpers.bytes_to_human(abs(distribution.size))
-        if distribution.size > 0:
+        title += ', ' + helpers.bytes_to_human(abs(self.distribution.size))
+        if self.distribution.size > 0:
             title += '...'
         title += ')'
 
-        if distribution.overall_timer > 0:
-            title += ' • Установка... '+helpers.seconds_to_human(distribution.overall_timer)
-        elif distribution.overall_timer < 0:
-            title += ' • Установлено за ' + helpers.seconds_to_human(abs(distribution.overall_timer))
+        if self.distribution.overall_timer > 0:
+            title += ' • Установка... ' + helpers.seconds_to_human(self.distribution.overall_timer)
+        elif self.distribution.overall_timer < 0:
+            title += ' • Установлено за ' + helpers.seconds_to_human(abs(self.distribution.overall_timer))
 
         self.setWindowTitle(title)
