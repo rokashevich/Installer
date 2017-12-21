@@ -40,7 +40,7 @@ goto FINISH
 )
 
 
-for /f "tokens=*" %%a in (%BASE_TXT_FILE%) do call :PARSE_STRING %%a
+for /f "tokens=1,2,* delims= " %%a in (%BASE_TXT_FILE%) do call :PARSE_STRING %%a %%b "%%c"
 
 
 :FINISH
@@ -52,14 +52,14 @@ exit /b 0
 
 :PARSE_STRING
 if not "%1"=="md5" exit /b
-set "MD5_FROM_BASE_TXT=%2"
-set "FILE_RELATIVE_PATH=%3"
-if not exist "%FILE_RELATIVE_PATH%" (
+set MD5_FROM_BASE_TXT=%2
+set FILE_RELATIVE_PATH=%3
+if not exist %FILE_RELATIVE_PATH% (
 	echo error file not found %FILE_RELATIVE_PATH% >> %TMP_FILE%
 	exit /b
 )
 setlocal enabledelayedexpansion
-for /f "delims=" %%_ in ('certutil -hashfile "%FILE_RELATIVE_PATH%" MD5 ^| find /v ":"') do (
+for /f "delims=" %%_ in ('certutil -hashfile %FILE_RELATIVE_PATH% MD5 ^| find /v ":"') do (
 set "MD5=%%_"
 set "MD5=!MD5: =!"
 if not "!MD5!"=="%MD5_FROM_BASE_TXT%" echo error md5 %FILE_RELATIVE_PATH% >> %TMP_FILE%

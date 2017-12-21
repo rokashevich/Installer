@@ -78,19 +78,21 @@ def md5sum(dir):
 
 def copy_from_to(h1, p1, h2, p2, mirror=False, identifiers=[]):
     if sys.platform == 'win32':
-        p = [r'/mir'] if mirror else [r'/e']
+        p = [r'/e']
+        if mirror:
+            p.extend([r'/purge'])
         p.extend([r'/r:0'])  # /w:5 - ждать секунд, /r - retry раз
-        p.extend([r'/nfl', r'/ndl', r'/njh', r'/njs', r'/nc', r'/ns', r'/np'])  # silent
         if h1:
             cmd = ['PsExec.exe', '-accepteula', '-nobanner', '\\\\' + h1,
                    '-u', Globals.samba_login, '-p', Globals.samba_password,
-                   'robocopy '] + p + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
+                   'robocopy '] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + p
         else:
-            cmd = ['robocopy'] + p + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
+            cmd = ['robocopy'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + p
         r = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         identifiers.append(r)
         r.communicate()
         if r.returncode < 8:
+            # https://ss64.com/nt/robocopy-exit.html
             # 16 ***FATAL ERROR***
             # 15 FAIL MISM XTRA COPY
             # 14 FAIL MISM XTRA
