@@ -73,7 +73,7 @@ class TableData:
             self.checked = checked
             self.base_timer = -1
             self.verify_timer = -1
-            self.overall_timer = 0
+            self.installation_timer = 0
             self.base_state = Host.State.IDLE
             self.conf_state = Host.State.IDLE
             self.pre_state = Host.State.IDLE
@@ -146,7 +146,7 @@ class Installer(QWidget):
             self.base = ''
             self.size = 0
             self.prepare_timer = 0
-            self.overall_timer = 0  # <=0 - процесс не запущен, >0 - процесс идёт
+            self.installation_timer = 0  # <=0 - процесс не запущен, >0 - процесс идёт
 
     configurations_changed = pyqtSignal()
     configuration_changed = pyqtSignal()
@@ -335,6 +335,17 @@ class Installer(QWidget):
 
         threading.Thread(target=discover_lan_hosts).start()
 
+        def installation_timer():
+            while True:
+                if self.state == Installer.State.INSTALLING:
+                    self.distribution.installation_timer += 1
+                    self.window_title_changed.emit()
+                time.sleep(1)
+                if not threading.main_thread().is_alive():
+                    sys.exit()
+
+        threading.Thread(target=installation_timer).start()
+
     def on_message_appeared(self, message):
         print(message)
         self.console.append(message)
@@ -400,7 +411,7 @@ class Installer(QWidget):
             self.configurations_list.setDisabled(True)
             self.installation_path.setDisabled(True)
             self.button_start_stop.setText('❌ Стоп')
-            self.button_start_stop.setEnabled(True)
+            self.button_start_stop.setEnabled(False)
             self.table.setEnabled(True)
 
     def on_clicked_table(self, index):
@@ -410,16 +421,19 @@ class Installer(QWidget):
             host.checked = not host.checked
         elif column == 1:
             if host.state == Host.State.IDLE:
+                logger.message_appeared.emit('--- Установка %s' % host.hostname)
                 host.state = Host.State.QUEUED
                 self.worker_needed.emit()
             else:
                 if host.state == Host.State.QUEUED:
                     host.state = Host.State.IDLE
                 else:
-                    if host.state == Host.State.SUCCESS:
+                    if host.state == Host.State.SUCCESS or host.state == Host.State.FAILURE:
+                        logger.message_appeared.emit('--- Переустановка %s' % host.hostname)
                         host.state = Host.State.QUEUED
                         self.worker_needed.emit()
                     else:
+                        logger.message_appeared.emit('--- Остановка %s' % host.hostname)
                         host.state = Host.State.CANCELING
         self.table_changed.emit()
 
@@ -492,6 +506,9 @@ class Installer(QWidget):
             self.button_start_stop.setEnabled(False)
             self.table.setEnabled(False)
 
+        self.state = Installer.State.PRE_INSTALL_SELECTED
+        self.window_title_changed.emit()
+
     def on_clicked_button_browse(self):
         if not self.state == Installer.State.PREPARING:
             settings = QSettings()
@@ -512,21 +529,13 @@ class Installer(QWidget):
 
     def on_clicked_button_start_stop(self):
         if not self.state == Installer.State.INSTALLING:
+            logger.message_appeared.emit('--- Всеобщий старт')
             self.do_start_spider()
         else:
+            logger.message_appeared.emit('--- Всеобщий стоп')
             self.state = Installer.State.PREPARED
 
     def do_start_spider(self):
-        def timer():
-            self.distribution.overall_timer = 1
-            while self.distribution.overall_timer > 0:
-                if not threading.main_thread().is_alive():
-                    sys.exit()
-                self.window_title_changed.emit()
-                time.sleep(1)
-                self.distribution.overall_timer += 1
-
-        threading.Thread(target=timer).start()
         for host in [host for host in self.table.model().data.hosts if host.checked]:
             if host.state == Host.State.IDLE:
                 host.state = Host.State.QUEUED
@@ -709,6 +718,10 @@ class Installer(QWidget):
             pass
 
     def worker(self):
+        if not self.state == Installer.State.INSTALLING:
+            self.state = Installer.State.INSTALLING
+            self.state_changed.emit()
+
         # Копирование base
         have_source_host = False
         any_base_copy_started = False
@@ -775,7 +788,8 @@ class Installer(QWidget):
             if host.state != Host.State.SUCCESS:
                 return
 
-        self.distribution.overall_timer = -self.distribution.overall_timer
+        self.state = Installer.State.PRE_INSTALL_SELECTED
+        self.state_changed.emit()
         self.window_title_changed.emit()
 
     def prepare_distribution(self, uri):
@@ -917,9 +931,10 @@ class Installer(QWidget):
             title += '...'
         title += ')'
 
-        if self.distribution.overall_timer > 0:
-            title += ' • Установка... ' + helpers.seconds_to_human(self.distribution.overall_timer)
-        elif self.distribution.overall_timer < 0:
-            title += ' • Установлено за ' + helpers.seconds_to_human(abs(self.distribution.overall_timer))
+        if self.state == Installer.State.INSTALLING:
+            title += ' • Установка... ' + helpers.seconds_to_human(self.distribution.installation_timer)
+        elif self.state == Installer.State.PRE_INSTALL_SELECTED:
+            if self.distribution.installation_timer > 0:
+                title += ' • Завершено ' + helpers.seconds_to_human(self.distribution.installation_timer)
 
         self.setWindowTitle(title)
