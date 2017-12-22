@@ -898,15 +898,16 @@ class Installer(QWidget):
         pass
 
     def unpack_distribution(self, file):
-        unpack_to = os.path.join(file[:-4])  # отрезаем .zip
+        unpack_to = os.path.splitext(file)[1]  # отрезаем расширение: .7z, .zip
         if os.path.exists(unpack_to):
             self.prepare_message = 'Удаление дистрибутива, распакованного в прошлый раз'
             shutil.rmtree(unpack_to)
 
         self.prepare_message = 'Распаковка ' + os.path.basename(file)
-        with zipfile.ZipFile(file, 'r') as z:
-            # TODO перевести на extract с отменой
-            z.extractall(unpack_to)
+        subprocess.run('7za.exe x '+file+' -o'+unpack_to)
+        #with zipfile.ZipFile(file, 'r') as z:
+        #    # TODO перевести на extract с отменой
+        #    z.extractall(unpack_to)
 
         return unpack_to
 
