@@ -90,6 +90,8 @@ def copy_from_to(h1, p1, h2, p2, mirror=False, identifiers=[]):
             cmd = ['robocopy'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + p
         r = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         identifiers.append(r)
+        o = r.stdout.read()
+        e = r.stderr.read()
         r.communicate()
         if r.returncode < 8:
             # https://ss64.com/nt/robocopy-exit.html
@@ -111,6 +113,6 @@ def copy_from_to(h1, p1, h2, p2, mirror=False, identifiers=[]):
             #  1 COPY OK
             #  0 --no change--
             return ''
-        return 'cmd=%s returncode=%d stdout=%s stderr=%s' % (cmd, r.returncode, r.stdout, r.stderr)
+        return 'cmd=%s returncode=%d stdout=%s stderr=%s' % (' '.join(cmd), r.returncode, o, e)
     else:
         sys.exit('sys.platform != win32')

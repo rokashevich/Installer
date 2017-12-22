@@ -582,6 +582,7 @@ class Installer(QWidget):
             self.table_changed.emit()
         else:
             if r:
+                logger.message_appeared.emit('*** %s: ошибка копирования base: %s' % (destination_host.hostname, r))
                 destination_host.state = destination_host.base_state = Host.State.FAILURE
             else:
                 destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
