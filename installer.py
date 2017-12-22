@@ -72,6 +72,7 @@ class TableData:
             self.hostname = hostname
             self.checked = checked
             self.base_timer = -1
+            self.conf_counter = 0
             self.verify_timer = -1
             self.installation_timer = 0
             self.base_state = Host.State.IDLE
