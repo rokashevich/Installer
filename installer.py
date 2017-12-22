@@ -404,6 +404,7 @@ class Installer(QWidget):
                 self.pre_install_scripts_combo.setEnabled(True)
             self.button_start_stop.setText('➤ Старт')
             self.button_start_stop.setEnabled(True)
+
             self.table.setEnabled(True)
 
         elif self.state == Installer.State.INSTALLING:
@@ -537,7 +538,9 @@ class Installer(QWidget):
 
     def do_start_spider(self):
         for host in [host for host in self.table.model().data.hosts if host.checked]:
-            if host.state == Host.State.IDLE:
+            if (host.state == Host.State.IDLE
+                    or host.state == Host.State.FAILURE
+                    or host.state == Host.State.SUCCESS):
                 host.state = Host.State.QUEUED
         self.worker_needed.emit()
 
