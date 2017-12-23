@@ -72,7 +72,8 @@ class TableData:
             self.hostname = hostname
             self.checked = checked
             self.base_timer = -1
-            self.conf_counter = 0
+            self.conf_counter_total = 0
+            self.conf_counter_overwrite = 0
             self.verify_timer = -1
             self.installation_timer = 0
             self.base_state = Host.State.IDLE
@@ -593,27 +594,43 @@ class Installer(QWidget):
         self.worker_needed.emit()
 
     def do_copy_conf(self):
+        def cp(file, host):
+            remote_path = '\\\\'+host.hostname+'\\'+self.distribution.configurations_dir.replace(':', '$')+'\\'+file
+            if os.path.exists(remote_path):
+                host.conf_counter_overwrite += 1
+            try:
+                shutil.copyfile(file, remote_path)
+            except:
+                return False
+            host.conf_counter_total += 1
+            return True
+        hosts = []  # Заполним хостами, на которые надо будет установить conf
         for host in [host for host in self.table.model().data.hosts if host.checked]:
             if host.state == Host.State.CANCELING:
                 host.state = Host.State.IDLE
                 self.table_changed.emit()
                 continue
             if host.state == Host.State.BASE_SUCCESS:
-                success = True
-                conf_name = self.configurations[self.configurations_list.currentIndex().row()]
-                for c in [os.path.join(self.distribution.configurations_dir, conf_name, 'common'),
-                          os.path.join(self.distribution.configurations_dir, conf_name, host.hostname)]:
-                    if os.path.exists(c):
-                        r = helpers.copy_from_to(None, c, host.hostname, self.installation_path.text())
-                        if r:
-                            logger.message_appeared.emit('*** Ошибка копирования conf: ' + r)
-                            success = False
-                            break
-                if success:
-                    host.state = host.conf_state = Host.State.CONF_SUCCESS
-                else:
-                    host.state = host.conf_state = Host.State.FAILURE
-                self.table_changed.emit()
+                hosts.append(host)
+        conf_name = self.configurations[self.configurations_list.currentIndex().row()]
+        common_path = os.path.join(self.distribution.configurations_dir, conf_name, 'common')
+        if os.path.exists(common_path):
+            for root, dirs, files in os.walk(common_path):
+                for file in files:
+                    for host in hosts:
+                        if not cp(os.path.join(root, file), host):
+                            host.state = Host.State.FAILURE
+        for host in hosts:
+            if host.state != Host.State.FAILURE:
+                conf_path = os.path.join(self.distribution.configurations_dir, conf_name, host.hostname)
+                if os.path.exists(conf_path):
+                    for root, dirs, files in os.walk(conf_path):
+                        for file in files:
+                            if not cp(os.path.join(root, file), host):
+                                host.state = Host.State.FAILURE
+        for host in hosts:
+            if host.state != Host.State.FAILURE:
+                host.state = host.conf_state = Host.State.CONF_SUCCESS
         self.worker_needed.emit()
 
     def do_run_pre_script(self):
