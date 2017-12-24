@@ -595,12 +595,15 @@ class Installer(QWidget):
 
     def do_copy_conf(self):
         def cp(file, host):
-            remote_path = '\\\\'+host.hostname+'\\'+self.distribution.configurations_dir.replace(':', '$')+'\\'+file
+            remote_path = '\\\\'+host.hostname+'\\'+self.installation_path.text().replace(':', '$')+'\\'+file
             if os.path.exists(remote_path):
                 host.conf_counter_overwrite += 1
             try:
+                print(os.path.dirname(remote_path), remote_path)
+                os.makedirs(os.path.dirname(remote_path), exist_ok=True)
                 shutil.copyfile(file, remote_path)
             except:
+                print('***'+file)
                 return False
             host.conf_counter_total += 1
             return True
