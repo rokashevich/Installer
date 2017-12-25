@@ -189,15 +189,15 @@ class Installer(QWidget):
                         text = 'Установлен base %s' % helpers.seconds_to_human(host.base_timer)
                         background_color = '#c5f31f'
                     elif host.state == Host.State.CONF_SUCCESS:
-                        text = 'Установлен base %s, conf' % helpers.seconds_to_human(host.base_timer)
+                        text = 'Установлен base %s, conf (%d)' % (helpers.seconds_to_human(host.base_timer), host.conf_counter_total)
                         background_color = '#94ed17'
                     elif host.state == Host.State.PRE_SUCCESS:
-                        text = 'Установлен base, conf; выполнен pre-скрипт'
+                        text = 'Установлен base, conf (%d); выполнен pre-скрипт' % host.conf_counter_total
                         background_color = '#63e60f'
                     elif host.state == Host.State.MD5_RUNNING:
                         text = 'Установлен base %s' % helpers.seconds_to_human(host.base_timer)
                         if host.conf_state == Host.State.CONF_SUCCESS:
-                            text += '; conf'
+                            text += '; conf (%d)' % host.conf_counter_total
                         if host.pre_state == Host.State.PRE_SUCCESS:
                             text += '; pre-скрипт выполнен'
                         text += '; проверка md5... %s' % helpers.seconds_to_human(host.verify_timer)
@@ -205,7 +205,7 @@ class Installer(QWidget):
                     elif host.state == Host.State.SUCCESS:
                         text = 'Установлен base %s' % helpers.seconds_to_human(host.base_timer)
                         if host.conf_state == Host.State.CONF_SUCCESS:
-                            text += '; conf'
+                            text += '; conf (%d)' % host.conf_counter_total
                         if host.pre_state == Host.State.PRE_SUCCESS:
                             text += '; pre-скрипт выполнен'
                         text += '; проверка md5 %s — УСПЕХ' % helpers.seconds_to_human(host.verify_timer)
@@ -594,16 +594,15 @@ class Installer(QWidget):
         self.worker_needed.emit()
 
     def do_copy_conf(self):
-        def cp(file, host):
-            remote_path = '\\\\'+host.hostname+'\\'+self.installation_path.text().replace(':', '$')+'\\'+file
+        def cp(full_path, base_for_relative_path, host):
+            relative_path = os.path.relpath(full_path, base_for_relative_path)
+            remote_path = '\\\\'+host.hostname+'\\'+self.installation_path.text().replace(':', '$')+'\\'+relative_path
             if os.path.exists(remote_path):
                 host.conf_counter_overwrite += 1
             try:
-                print(os.path.dirname(remote_path), remote_path)
                 os.makedirs(os.path.dirname(remote_path), exist_ok=True)
-                shutil.copyfile(file, remote_path)
+                shutil.copyfile(full_path, remote_path)
             except:
-                print('***'+file)
                 return False
             host.conf_counter_total += 1
             return True
@@ -621,7 +620,7 @@ class Installer(QWidget):
             for root, dirs, files in os.walk(common_path):
                 for file in files:
                     for host in hosts:
-                        if not cp(os.path.join(root, file), host):
+                        if not cp(os.path.join(root, file), common_path, host):
                             host.state = Host.State.FAILURE
         for host in hosts:
             if host.state != Host.State.FAILURE:
@@ -629,7 +628,7 @@ class Installer(QWidget):
                 if os.path.exists(conf_path):
                     for root, dirs, files in os.walk(conf_path):
                         for file in files:
-                            if not cp(os.path.join(root, file), host):
+                            if not cp(os.path.join(root, file), conf_path, host):
                                 host.state = Host.State.FAILURE
         for host in hosts:
             if host.state != Host.State.FAILURE:
