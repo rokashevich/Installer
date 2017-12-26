@@ -183,32 +183,35 @@ class Installer(QWidget):
                 if host.checked:
                     pen_color = '#000'
                     if host.state == Host.State.BASE_INSTALLING_DESTINATION:
-                        text = 'Копирование base... %s' % helpers.seconds_to_human(host.base_timer)
+                        text = 'Копирование base... (%s)' % helpers.seconds_to_human(host.base_timer)
                         background_color = '#f4f928'
                     elif host.state == Host.State.BASE_SUCCESS or host.state == Host.State.BASE_INSTALLING_SOURCE:
-                        text = 'Установлен base %s' % helpers.seconds_to_human(host.base_timer)
+                        text = 'Установлен base (%s)' % helpers.seconds_to_human(host.base_timer)
                         background_color = '#c5f31f'
                     elif host.state == Host.State.CONF_SUCCESS:
-                        text = 'Установлен base %s, conf (%d)' % (helpers.seconds_to_human(host.base_timer), host.conf_counter_total)
+                        text = 'Установлен base %s, conf (всего %d, перезаписано %d)' \
+                               % (helpers.seconds_to_human(host.base_timer),
+                                  host.conf_counter_total, host.conf_counter_overwrite)
                         background_color = '#94ed17'
                     elif host.state == Host.State.PRE_SUCCESS:
-                        text = 'Установлен base, conf (%d); выполнен pre-скрипт' % host.conf_counter_total
+                        text = 'Установлен base, conf (всего %d, перезаписано %d); выполнен pre-скрипт' \
+                               % (host.conf_counter_total, host.conf_counter_overwrite)
                         background_color = '#63e60f'
                     elif host.state == Host.State.MD5_RUNNING:
-                        text = 'Установлен base %s' % helpers.seconds_to_human(host.base_timer)
+                        text = 'Установлен base (%s)' % helpers.seconds_to_human(host.base_timer)
                         if host.conf_state == Host.State.CONF_SUCCESS:
-                            text += '; conf (%d)' % host.conf_counter_total
+                            text += '; conf (всего %d, перезаписано %d)' % (host.conf_counter_total, host.conf_counter_overwrite)
                         if host.pre_state == Host.State.PRE_SUCCESS:
                             text += '; pre-скрипт выполнен'
-                        text += '; проверка md5... %s' % helpers.seconds_to_human(host.verify_timer)
+                        text += '; проверка md5... (%s)' % helpers.seconds_to_human(host.verify_timer)
                         background_color = '#63e60f'
                     elif host.state == Host.State.SUCCESS:
-                        text = 'Установлен base %s' % helpers.seconds_to_human(host.base_timer)
+                        text = 'Установлен base (%s)' % helpers.seconds_to_human(host.base_timer)
                         if host.conf_state == Host.State.CONF_SUCCESS:
                             text += '; conf (%d)' % host.conf_counter_total
                         if host.pre_state == Host.State.PRE_SUCCESS:
                             text += '; pre-скрипт выполнен'
-                        text += '; проверка md5 %s — УСПЕХ' % helpers.seconds_to_human(host.verify_timer)
+                        text += '; проверка md5 (%s) — УСПЕХ' % helpers.seconds_to_human(host.verify_timer)
                         background_color = '#00eb00'
                     elif host.state == Host.State.FAILURE:
                         text = 'ОШИБКА'
