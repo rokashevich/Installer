@@ -519,8 +519,11 @@ class Installer(QWidget):
         if not self.state == Installer.State.PREPARING:
             settings = QSettings()
             default_browse_path = settings.value('default_browse_path', r'C:\\', type=str)
+            options = QFileDialog.Options()
+            options |= QFileDialog.DontUseNativeDialog
             file, _ = QFileDialog.getOpenFileName(self, 'Выберите дистрибутив или укажите '
-                                                        'base.txt в распакованном дистрибутиве', default_browse_path)
+                                                        'base.txt в распакованном дистрибутиве', default_browse_path,
+                                                  "Distributions (*.zip *.7z)",options=options)
             if not file:
                 self.state = Installer.State.DEFAULT
                 return
@@ -820,7 +823,7 @@ class Installer(QWidget):
         self.window_title_changed.emit()
 
     def prepare_distribution(self, uri):
-        logger.message_appeared.emit('--- Открытие ' + uri)
+        logger.message_appeared.emit('--- Выбрали ' + uri)
 
         def timer():
             while self.state == Installer.State.PREPARING:
@@ -847,7 +850,7 @@ class Installer(QWidget):
 
         if uri.endswith('base.txt'):  # указали на уже распакованный дистрибутив
             base_txt = uri
-        else:  # указали zip архив
+        else:  # выбрали файл-архив
             unpack_to = self.unpack_distribution(uri)
             base_txt = os.path.join(unpack_to, 'base', 'base.txt')
             if not os.path.isfile(base_txt):
@@ -921,17 +924,14 @@ class Installer(QWidget):
         pass
 
     def unpack_distribution(self, file):
-        unpack_to = os.path.splitext(file)[1]  # отрезаем расширение: .7z, .zip
+        unpack_to = os.path.splitext(file)[0]  # отрезаем расширение: .7z, .zip
+        logger.message_appeared.emit('--- Распаковываем в %s' % unpack_to)
         if os.path.exists(unpack_to):
-            self.prepare_message = 'Удаление дистрибутива, распакованного в прошлый раз'
+            logger.message_appeared.emit('--- Удаление дистрибутива, распакованного в прошлый раз')
             shutil.rmtree(unpack_to)
-
-        self.prepare_message = 'Распаковка ' + os.path.basename(file)
-        subprocess.run('7za.exe x '+file+' -o'+unpack_to)
-        #with zipfile.ZipFile(file, 'r') as z:
-        #    # TODO перевести на extract с отменой
-        #    z.extractall(unpack_to)
-
+        cmd = '7za.exe x '+file+' -o'+unpack_to
+        logger.message_appeared.emit('--- >%s' % cmd)
+        subprocess.run(cmd)
         return unpack_to
 
     def on_title_changed(self):
