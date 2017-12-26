@@ -523,7 +523,7 @@ class Installer(QWidget):
             options |= QFileDialog.DontUseNativeDialog
             file, _ = QFileDialog.getOpenFileName(self, 'Выберите дистрибутив или укажите '
                                                         'base.txt в распакованном дистрибутиве', default_browse_path,
-                                                  "Distributions (*.zip *.7z)",options=options)
+                                                  "Distributions (*.zip *.7z base.txt)",options=options)
             if not file:
                 self.state = Installer.State.DEFAULT
                 return
@@ -581,8 +581,8 @@ class Installer(QWidget):
         threading.Thread(target=timer).start()
         source_hostname = source_host.hostname if source_host else None
         source_path = self.installation_path.text() if source_host else self.distribution.base
-        r = helpers.copy_from_to(source_hostname, source_path, destination_host.hostname, self.installation_path.text(),
-                                 mirror=True, identifiers=identifiers)
+        r = helpers.copy_from_to(source_hostname, source_path, destination_host.hostname, self.installation_path.text()
+                                 , identifiers=identifiers)
         if destination_host.state == Host.State.CANCELING:
             destination_host.state = Host.State.IDLE
             if source_host:
@@ -762,6 +762,8 @@ class Installer(QWidget):
                     if destination_host.state == Host.State.QUEUED:
                         source_host.state = Host.State.BASE_INSTALLING_SOURCE
                         destination_host.state = Host.State.BASE_INSTALLING_DESTINATION
+                        logger.message_appeared.emit('--- Копирование base: %s -> %s' % (source_host.hostname,
+                                                                                         destination_host.hostname))
                         threading.Thread(target=self.do_copy_base, args=(source_host, destination_host)).start()
                         any_base_copy_started = True
                         break
@@ -774,6 +776,7 @@ class Installer(QWidget):
             for destination_host in [host for host in self.table.model().data.hosts if host.checked]:
                 if destination_host.state == destination_host.state.QUEUED:
                     destination_host.state = Host.State.BASE_INSTALLING_DESTINATION
+                    logger.message_appeared.emit('--- Копирование base: localhost -> %s' % destination_host.hostname)
                     threading.Thread(target=self.do_copy_base, args=(None, destination_host)).start()
                     any_base_copy_started = True
                     break
@@ -925,7 +928,7 @@ class Installer(QWidget):
 
     def unpack_distribution(self, file):
         unpack_to = os.path.splitext(file)[0]  # отрезаем расширение: .7z, .zip
-        logger.message_appeared.emit('--- Распаковываем в %s' % unpack_to)
+        logger.message_appeared.emit('--- Каталог распаковки %s' % unpack_to)
         if os.path.exists(unpack_to):
             logger.message_appeared.emit('--- Удаление дистрибутива, распакованного в прошлый раз')
             shutil.rmtree(unpack_to)
