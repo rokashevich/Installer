@@ -11,6 +11,8 @@ import subprocess
 from globals import Globals
 
 
+# https://superuser.com/questions/914782/how-do-you-list-all-processes-on-the-command-line-in-windows
+
 # ✅✓✔⚫⚪◉🔘◯🌕🌑●○🔳🔲⛳ ➤▶▸►❱›➡➔➜➧➫➩ ✕✖❌✗✘❌↻ 👍👎📁📂📄📜🔨🔧😸
 
 # def git_revision():
@@ -88,7 +90,7 @@ def copy_from_to(h1, p1, h2, p2, identifiers=[]):
         robocopy_options = [r'/mir', r'/is', r'/it', r'/r:1', r'/w:5']
         robocopy_options += [r'/np', r'/nfl', r'/njh', r'/njs', r'/ndl', r'/nc', r'/ns']  # silent
         if h1:
-            cmd = ['PsExec.exe', '-accepteula', '-nobanner', '\\\\' + h1,
+            cmd = ['PsExec64.exe', '-accepteula', '-nobanner', '\\\\' + h1,
                    '-u', Globals.samba_login, '-p', Globals.samba_password,
                    'robocopy'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + robocopy_options
                    #'xcopy', r'/s', r'/i'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]

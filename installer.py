@@ -208,7 +208,8 @@ class Installer(QWidget):
                     elif host.state == Host.State.SUCCESS:
                         text = 'Установлен base (%s)' % helpers.seconds_to_human(host.base_timer)
                         if host.conf_state == Host.State.CONF_SUCCESS:
-                            text += '; conf (%d)' % host.conf_counter_total
+                            text += '; conf (всего %d, перезаписано %d)' % (host.conf_counter_total,
+                                                                            host.conf_counter_overwrite)
                         if host.pre_state == Host.State.PRE_SUCCESS:
                             text += '; pre-скрипт выполнен'
                         text += '; проверка md5 (%s) — УСПЕХ' % helpers.seconds_to_human(host.verify_timer)
