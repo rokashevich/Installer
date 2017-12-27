@@ -281,8 +281,10 @@ class Installer(QWidget):
         self.installation_path = QLineEdit()
         self.pre_install_scripts_combo = PyQt5.QtWidgets.QComboBox()
         self.pre_install_scripts_combo.addItem("")
-        self.button_console = QPushButton('📜 Консоль')
+
         self.button_start_stop = QPushButton('➤ Старт')
+        self.button_console = QPushButton('📜')
+        self.button_toggle_select = QPushButton('☑')
 
         self.stacked = PyQt5.QtWidgets.QStackedWidget()
         self.stacked.addWidget(self.table)
@@ -294,13 +296,16 @@ class Installer(QWidget):
         # If rowSpan and/or columnSpan is -1, then the widget will extend to the bottom and/or right edge, respectively.
         # https://doc.qt.io/qt-5/qgridlayout.html#addWidget-2
 
-        gl.addWidget(self.button_browse, 0, 0, 1, 1)
-        gl.addWidget(self.button_start_stop, 0, 1, 1, 1)
-        gl.addWidget(self.button_console, 0, 2, 1, 1)
-        gl.addWidget(self.configurations_list, 1, 0, 1, 3)
-        gl.addWidget(self.installation_path, 2, 0, 1, 3)
-        gl.addWidget(self.pre_install_scripts_combo, 3, 0, 1, 3)
-        gl.addWidget(self.stacked, 0, 3, -1, 1)
+        gl.addWidget(self.button_browse,             0, 0, 1, 1)  #
+        gl.addWidget(self.button_start_stop,         0, 1, 1, 1)  # Верхний ряд
+        gl.addWidget(self.button_console,            0, 2, 1, 1)  # кнопок
+        gl.addWidget(self.button_toggle_select,      0, 3, 1, 1)  #
+
+        gl.addWidget(self.configurations_list,       1, 0, 1, 4)  #
+        gl.addWidget(self.installation_path,         2, 0, 1, 4)  # Элементы друг над другом
+        gl.addWidget(self.pre_install_scripts_combo, 3, 0, 1, 4)  #
+
+        gl.addWidget(self.stacked,                   0, 4, -1, 1)  # Контейнер: консоль или лог
 
         self.setLayout(gl)
 
@@ -320,6 +325,7 @@ class Installer(QWidget):
         self.button_browse.clicked.connect(self.on_clicked_button_browse)
         self.button_start_stop.clicked.connect(self.on_clicked_button_start_stop)
         self.button_console.clicked.connect(self.on_clicked_button_console)
+        self.button_toggle_select.clicked.connect(self.on_clicked_button_toggle_select)
         self.table.clicked.connect(self.on_clicked_table)
         self.state_changed.connect(self.on_state_changed)
         self.table_changed.connect(self.on_table_changed)
@@ -364,6 +370,7 @@ class Installer(QWidget):
             self.configurations_list.setDisabled(True)
             self.installation_path.setDisabled(True)
             self.button_start_stop.setDisabled(True)
+            self.button_toggle_select.setDisabled(True)
             self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
             self.button_browse.setEnabled(True)
             self.pre_install_scripts_combo.setDisabled(True)
@@ -373,6 +380,7 @@ class Installer(QWidget):
             self.configurations_list.setDisabled(True)
             self.installation_path.setDisabled(True)
             self.button_start_stop.setDisabled(True)
+            self.button_toggle_select.setDisabled(True)
             self.button_browse.setText('❌ Отменить')
             self.button_browse.setEnabled(True)
             self.pre_install_scripts_combo.setDisabled(True)
@@ -382,6 +390,7 @@ class Installer(QWidget):
         elif self.state == Installer.State.PREPARED:
             self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
             self.button_browse.setEnabled(True)
+            self.button_toggle_select.setDisabled(True)
             self.configurations_list.setEnabled(True)
             self.installation_path.setEnabled(True)
             self.configurations_list.setModel(PyQt5.QtCore.QStringListModel(self.configurations))
@@ -412,6 +421,7 @@ class Installer(QWidget):
             self.button_start_stop.setEnabled(True)
 
             self.table.setEnabled(True)
+            self.button_toggle_select.setEnabled(True)
 
         elif self.state == Installer.State.INSTALLING:
             self.button_browse.setDisabled(True)
@@ -555,11 +565,23 @@ class Installer(QWidget):
 
     def on_clicked_button_console(self):
         if self.stacked.currentIndex() == 0:
-            self.button_console.setText('💻 Таблица')
+            self.button_console.setText('💻')
             self.stacked.setCurrentIndex(1)
         else:
-            self.button_console.setText('📜 Консоль')
+            self.button_console.setText('📜')
             self.stacked.setCurrentIndex(0)
+
+    def on_clicked_button_toggle_select(self):
+        current_icon = self.button_toggle_select.text()
+        if current_icon == '☑':
+            self.button_toggle_select.setText('☐')
+            for host in self.table.model().data.hosts:
+                host.checked = True
+        else:
+            for host in self.table.model().data.hosts:
+                host.checked = False
+            self.button_toggle_select.setText('☑')
+        self.table_changed.emit()
 
     def do_copy_base(self, source_host, destination_host):
         identifiers = []
@@ -582,7 +604,7 @@ class Installer(QWidget):
         threading.Thread(target=timer).start()
         source_hostname = source_host.hostname if source_host else None
         source_path = self.installation_path.text() if source_host else self.distribution.base
-        r = helpers.copy_from_to(source_hostname, source_path, destination_host.hostname, self.installation_path.text()
+        r = helpers.copy_from_to(source_hostname, source_path, destination_host.hostname, self.installation_path.text().strip()
                                  , identifiers=identifiers)
         if destination_host.state == Host.State.CANCELING:
             destination_host.state = Host.State.IDLE

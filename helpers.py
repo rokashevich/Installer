@@ -79,48 +79,52 @@ def md5sum(dir):
 
 
 def copy_from_to(h1, p1, h2, p2, identifiers=[]):
-    if sys.platform == 'win32':
-        # cmd = ['PsExec.exe', '-accepteula', '-nobanner', '\\\\' + h2,
-        #       '-u', Globals.samba_login, '-p', Globals.samba_password,
-        #       'cmd', r'/c', r'rd /s/q %s' % p2]
-        # print(' '.join(cmd))
-        # r = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        # https://ss64.com/nt/robocopy.html
-        # https://ss64.com/nt/xcopy.html
-        robocopy_options = [r'/mir', r'/is', r'/it', r'/r:1', r'/w:5']
-        robocopy_options += [r'/np', r'/nfl', r'/njh', r'/njs', r'/ndl', r'/nc', r'/ns']  # silent
-        if h1:
-            cmd = ['PsExec64.exe', '-accepteula', '-nobanner', '\\\\' + h1,
-                   '-u', Globals.samba_login, '-p', Globals.samba_password,
-                   'robocopy'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + robocopy_options
-                   #'xcopy', r'/s', r'/i'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
-        else:
-            cmd = ['robocopy'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + robocopy_options
-            #cmd = ['xcopy', r'/s', r'/i'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
-        print(' '.join(cmd))
-        r = subprocess.Popen(' '.join(cmd), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        identifiers.append(r)
-        o, e = r.communicate()
-        # https://ss64.com/nt/robocopy-exit.html
-        # 16 ***FATAL ERROR***
-        # 15 FAIL MISM XTRA COPY
-        # 14 FAIL MISM XTRA
-        # 13 FAIL MISM COPY
-        # 12 FAIL MISM
-        # 11 FAIL XTRA COPY
-        # 10 FAIL XTRA
-        #  9 FAIL COPY
-        #  8 FAIL
-        #  7 MISM XTRA COPY OK
-        #  6 MISM XTRA OK
-        #  5 MISM COPY OK
-        #  4 MISM OK
-        #  3 XTRA COPY OK
-        #  2 XTRA OK
-        #  1 COPY OK
-        #  0 --no change--
-        if r.returncode < 8:
-            return ''
-        return 'cmd=%s returncode=%d stdout=%s stderr=%s' % (' '.join(cmd), r.returncode, o, e)
+    # Возвращаем пустую строку ('') в случае успеха,
+    # и строку с, по возможнсоти, содержательным сообщением об ошибке в противном случае.
+    #p2 = p2.strip()
+    print('>>>>>>>>>>>>>>>>>"'+p2+'"')
+    cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s cmd /c ' \
+          r'"if exist %s ( del /f/s/q %s > nul & rd /s/q %s & errorlevel )"' \
+          % (h2, Globals.samba_login, Globals.samba_password, p2, p2, p2)
+    r = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if r.returncode != 0:
+        return 'cmd=%s ret=%d' % (cmd, r.returncode)
+
+    # https://ss64.com/nt/robocopy.html
+    # https://ss64.com/nt/xcopy.html
+    robocopy_options = [r'/e', r'/is', r'/it', r'/r:1', r'/w:5']
+    robocopy_options += [r'/np', r'/nfl', r'/njh', r'/njs', r'/ndl', r'/nc', r'/ns']  # silent
+    if h1:
+        cmd = ['PsExec64.exe', '-accepteula', '-nobanner', '\\\\' + h1,
+               '-u', Globals.samba_login, '-p', Globals.samba_password,
+               'robocopy'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + robocopy_options
+        # 'xcopy', r'/s', r'/i'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
     else:
-        sys.exit('sys.platform != win32')
+        cmd = ['robocopy'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + robocopy_options
+        # cmd = ['xcopy', r'/s', r'/i'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
+    print(' '.join(cmd))
+    r = subprocess.Popen(' '.join(cmd), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    identifiers.append(r)
+    o, e = r.communicate()
+    # https://ss64.com/nt/robocopy-exit.html
+    # 16 ***FATAL ERROR***
+    # 15 FAIL MISM XTRA COPY
+    # 14 FAIL MISM XTRA
+    # 13 FAIL MISM COPY
+    # 12 FAIL MISM
+    # 11 FAIL XTRA COPY
+    # 10 FAIL XTRA
+    #  9 FAIL COPY
+    #  8 FAIL
+    #  7 MISM XTRA COPY OK
+    #  6 MISM XTRA OK
+    #  5 MISM COPY OK
+    #  4 MISM OK
+    #  3 XTRA COPY OK
+    #  2 XTRA OK
+    #  1 COPY OK
+    #  0 --no change--
+    if r.returncode < 8:
+        return ''
+    return 'cmd=%s returncode=%d stdout=%s stderr=%s' % (' '.join(cmd), r.returncode, o, e)
+
