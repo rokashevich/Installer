@@ -81,21 +81,19 @@ def md5sum(dir):
 def copy_from_to(h1, p1, h2, p2, identifiers=[]):
     # Возвращаем пустую строку ('') в случае успеха,
     # и строку с, по возможнсоти, содержательным сообщением об ошибке в противном случае.
-    #p2 = p2.strip()
-    print('>>>>>>>>>>>>>>>>>"'+p2+'"')
     cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s cmd /c ' \
-          r'"if exist %s ( del /f/s/q %s > nul & rd /s/q %s & errorlevel )"' \
+          r'"if exist %s ( del /f/s/q %s > nul & rd /s/q %s )"' \
           % (h2, Globals.samba_login, Globals.samba_password, p2, p2, p2)
-    r = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if r.returncode != 0:
-        return 'cmd=%s ret=%d' % (cmd, r.returncode)
+        return 'cmd=%s ret=%d stdout=%s stderr=%s' % (cmd, r.returncode, r.stdout, r.stderr)
 
     # https://ss64.com/nt/robocopy.html
     # https://ss64.com/nt/xcopy.html
     robocopy_options = [r'/e', r'/is', r'/it', r'/r:1', r'/w:5']
     robocopy_options += [r'/np', r'/nfl', r'/njh', r'/njs', r'/ndl', r'/nc', r'/ns']  # silent
     if h1:
-        cmd = ['PsExec64.exe', '-accepteula', '-nobanner', '\\\\' + h1,
+        cmd = ['PsExec.exe', '-accepteula', '-nobanner', '\\\\' + h1,
                '-u', Globals.samba_login, '-p', Globals.samba_password,
                'robocopy'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + robocopy_options
         # 'xcopy', r'/s', r'/i'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
