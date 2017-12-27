@@ -283,6 +283,7 @@ class Installer(QWidget):
         self.pre_install_scripts_combo.addItem("")
 
         self.button_start_stop = QPushButton('➤ Старт')
+        self.button_file_manager = QPushButton('📂')
         self.button_console = QPushButton('📜')
         self.button_toggle_select = QPushButton('☑')
 
@@ -298,14 +299,15 @@ class Installer(QWidget):
 
         gl.addWidget(self.button_browse,             0, 0, 1, 1)  #
         gl.addWidget(self.button_start_stop,         0, 1, 1, 1)  # Верхний ряд
-        gl.addWidget(self.button_console,            0, 2, 1, 1)  # кнопок
-        gl.addWidget(self.button_toggle_select,      0, 3, 1, 1)  #
+        gl.addWidget(self.button_file_manager,       0, 2, 1, 1)  # кнопок
+        gl.addWidget(self.button_console,            0, 3, 1, 1)  #
+        gl.addWidget(self.button_toggle_select,      0, 4, 1, 1)  #
 
-        gl.addWidget(self.configurations_list,       1, 0, 1, 4)  #
-        gl.addWidget(self.installation_path,         2, 0, 1, 4)  # Элементы друг над другом
-        gl.addWidget(self.pre_install_scripts_combo, 3, 0, 1, 4)  #
+        gl.addWidget(self.configurations_list,       1, 0, 1, 5)  #
+        gl.addWidget(self.installation_path,         2, 0, 1, 5)  # Элементы друг над другом
+        gl.addWidget(self.pre_install_scripts_combo, 3, 0, 1, 5)  #
 
-        gl.addWidget(self.stacked,                   0, 4, -1, 1)  # Контейнер: консоль или лог
+        gl.addWidget(self.stacked,                   0, 5, -1, 1)  # Контейнер: консоль или лог
 
         self.setLayout(gl)
 
@@ -324,6 +326,7 @@ class Installer(QWidget):
 
         self.button_browse.clicked.connect(self.on_clicked_button_browse)
         self.button_start_stop.clicked.connect(self.on_clicked_button_start_stop)
+        self.button_file_manager.clicked.connect(self.on_clicked_button_file_manager)
         self.button_console.clicked.connect(self.on_clicked_button_console)
         self.button_toggle_select.clicked.connect(self.on_clicked_button_toggle_select)
         self.table.clicked.connect(self.on_clicked_table)
@@ -554,6 +557,9 @@ class Installer(QWidget):
         else:
             logger.message_appeared.emit('--- Всеобщий стоп')
             self.state = Installer.State.PREPARED
+
+    def on_clicked_button_file_manager(self):
+        pass
 
     def do_start_spider(self):
         for host in [host for host in self.table.model().data.hosts if host.checked]:
