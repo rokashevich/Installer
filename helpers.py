@@ -91,12 +91,12 @@ def copy_from_to(h1, p1, h2, p2, identifiers=[]):
 
     # https://ss64.com/nt/robocopy.html
     # https://ss64.com/nt/xcopy.html
-    robocopy_options = [r'/e', r'/r:0', r'/w:0']
+    robocopy_options = [r'/e', r'/b', r'/r:0', r'/w:0']
     robocopy_options += [r'/np', r'/nfl', r'/njh', r'/njs', r'/ndl', r'/nc', r'/ns']  # silent
     if h1:
         cmd = ['PsExec.exe', '-accepteula', '-nobanner', '\\\\' + h1,
-               '-u', Globals.samba_login, '-p', Globals.samba_password, '-i', 'cmd', r'/c',
-               r'"robocopy %s \\%s\%s %s"' % (p1, h2, p2.replace(':', '$'), robocopy_options)]
+               '-u', Globals.samba_login, '-p', Globals.samba_password,
+               'robocopy', p1, r'\\%s\%s' % (h2, p2.replace(':', '$'))] + robocopy_options
         # 'xcopy', r'/j', r'/s', r'/i'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
     else:
         cmd = ['robocopy'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + robocopy_options
@@ -128,7 +128,7 @@ def copy_from_to(h1, p1, h2, p2, identifiers=[]):
     #  2 XTRA OK
     #  1 COPY OK
     #  0 --no change--
-    if returncode < 8:
+    if returncode == 1:
         #cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -c sync64.exe' % (h2, Globals.samba_login, Globals.samba_password, p2, p2, p2)
         #r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         #if r.returncode != 0:
