@@ -5,6 +5,7 @@ import sys
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QCoreApplication
 from PyQt5.QtGui import QFont, QIcon
+from PyQt5 import QtWidgets
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from globals import Globals
@@ -16,5 +17,11 @@ if __name__ == '__main__':
 
     app = QApplication(sys.argv)
     ex = Installer()
+
+    screen_geometry = QtWidgets.QDesktopWidget().screenGeometry(-1)  # -1 текущий экран
+    screen_height = screen_geometry.height()
+    screen_width = screen_geometry.width()
+    ex.setGeometry(200, 75, screen_width - 400, screen_height - 150)
+
     ex.setWindowIcon(QIcon('installer.png'))
     sys.exit(app.exec_())

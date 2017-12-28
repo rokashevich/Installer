@@ -311,11 +311,6 @@ class Installer(QWidget):
 
         self.setLayout(gl)
 
-        screen_geometry = QtWidgets.QDesktopWidget().screenGeometry(-1)  # -1 текущий экран
-        screen_height = screen_geometry.height()
-        screen_width = screen_geometry.width()
-        self.setGeometry(200, 200, screen_width - 400, screen_height - 400)
-
         self.window_title_changed.emit()
 
         # Стилизация
