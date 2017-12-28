@@ -812,9 +812,6 @@ class Installer(QWidget):
         if any_base_copy_started:
             return
 
-        print('----------------------------')
-        sys.exit(0)
-
         # Копирование conf
 
         # Если хотя бы один QUEUED, то значит ещё не везде ещё скопирован base - выходим.

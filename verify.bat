@@ -62,5 +62,5 @@ setlocal enabledelayedexpansion
 for /f "delims=" %%_ in ('certutil -hashfile %FILE_RELATIVE_PATH% MD5 ^| find /v ":"') do (
 set "MD5=%%_"
 set "MD5=!MD5: =!"
-if not "!MD5!"=="%MD5_FROM_BASE_TXT%" echo error md5 %FILE_RELATIVE_PATH% >> %TMP_FILE%
+if not "!MD5!"=="%MD5_FROM_BASE_TXT%" echo error md5 good=%MD5_FROM_BASE_TXT% bad=!MD5! %FILE_RELATIVE_PATH% >> %TMP_FILE%
 )

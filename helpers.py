@@ -6,7 +6,6 @@ import glob
 import time
 import shutil
 import zipfile
-import datetime
 import subprocess
 
 from globals import Globals
@@ -83,70 +82,34 @@ def copy_from_to(h1, p1, h2, p2, identifiers=[]):
     # Возвращаем пустую строку ('') в случае успеха,
     # и строку с, по возможнсоти, содержательным сообщением об ошибке в противном случае.
     # Если выполнять robocopy с ключём /mir без отдельного удаления места назначения - случается бьются файлы!
-
-    unique = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-    r = '\\\\%s\\C$\\' % h2  # remote
-    l = 'C:\\'  # local
-    c = r'Windows\Temp\copy%s' % unique  # constant
-
-    src = 'copy.bat'
-    dst = r + c + '.bat'
-    try:
-        shutil.copyfile(src, dst)
-    except:
-        return 'shutil.copyfile(%s, %s)' % (src, dst)
-
-    cmd = 'wmic /node:"%s" /user:"' % h2\
-          + Globals.samba_login + r'" /password:"' + Globals.samba_password \
-          + r'" process call create "%s%s.bat %s %s"' % (l, c, h2, p2)
-    p = subprocess.run(cmd, stdout=subprocess.PIPE)
-    if p.returncode:
-        return 'cmd=%s ret=%d' % (cmd, p.returncode)
-
-    while True:
-        return_message = ''
-        if os.path.exists(r + c + '.txt'):
-            with open(r + c + '.txt') as f:
-                for line in [line.strip() for line in f.readlines()]:
-                    print('>>'+line)
-                    if line == 'success':
-                        break
-                    else:
-                        return_message += line
-        if return_message == '':
-            try:
-                os.unlink(r + c + '.bat')
-                os.unlink(r + c + '.txt')
-                os.unlink(r + c + '.part.txt')
-            except:
-                pass
-            return return_message
-        else:
-            time.sleep(3)
-
-    '''
     cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s cmd /c ' \
           r'"if exist %s ( del /f/s/q %s > nul & rd /s/q %s )"' \
           % (h2, Globals.samba_login, Globals.samba_password, p2, p2, p2)
     r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if r.returncode != 0:
         return 'cmd=%s ret=%d stdout=%s stderr=%s' % (cmd, r.returncode, r.stdout, r.stderr)
+
     # https://ss64.com/nt/robocopy.html
     # https://ss64.com/nt/xcopy.html
-    robocopy_options = [r'/e', r'/is', r'/it', r'/r:0', r'/w:0', r'/mt']
+    robocopy_options = [r'/e', r'/r:0', r'/w:0']
     robocopy_options += [r'/np', r'/nfl', r'/njh', r'/njs', r'/ndl', r'/nc', r'/ns']  # silent
     if h1:
-        cmd = ['PsExec64.exe', '-accepteula', '-nobanner', '\\\\' + h1,
-               '-u', Globals.samba_login, '-p', Globals.samba_password, '-i',
-               'robocopy'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + robocopy_options
-        # 'xcopy', r'/s', r'/i'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
+        cmd = ['PsExec.exe', '-accepteula', '-nobanner', '\\\\' + h1,
+               '-u', Globals.samba_login, '-p', Globals.samba_password, '-i', 'cmd', r'/c',
+               r'"robocopy %s \\%s\%s %s"' % (p1, h2, p2.replace(':', '$'), robocopy_options)]
+        # 'xcopy', r'/j', r'/s', r'/i'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
     else:
         cmd = ['robocopy'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + robocopy_options
-        # cmd = ['xcopy', r'/s', r'/i'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
+        # cmd = ['xcopy', r'/j', r'/s', r'/i'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
     print(' '.join(cmd))
-    r = subprocess.Popen(' '.join(cmd), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    r = subprocess.Popen(cmd)
     identifiers.append(r)
-    o, e = r.communicate()
+    returncode = r.wait()
+
+    #r = subprocess.run(cmd)
+    #returncode = r.returncode
+
     # https://ss64.com/nt/robocopy-exit.html
     # 16 ***FATAL ERROR***
     # 15 FAIL MISM XTRA COPY
@@ -165,7 +128,11 @@ def copy_from_to(h1, p1, h2, p2, identifiers=[]):
     #  2 XTRA OK
     #  1 COPY OK
     #  0 --no change--
-    if r.returncode == 1:
+    if returncode < 8:
+        #cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -c sync64.exe' % (h2, Globals.samba_login, Globals.samba_password, p2, p2, p2)
+        #r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        #if r.returncode != 0:
+        #    return 'cmd=%s returncode=%d' % (cmd, r.returncode)
         return ''
-    return 'cmd=%s returncode=%d stdout=%s stderr=%s' % (' '.join(cmd), r.returncode, o, e)'''
+    return 'cmd=%s returncode=%d' % (' '.join(cmd), r.returncode)
 
