@@ -81,7 +81,6 @@ def md5sum(dir):
 def copy_from_to(h1, p1, h2, p2, identifiers=[]):
     # Возвращаем пустую строку ('') в случае успеха,
     # и строку с, по возможнсоти, содержательным сообщением об ошибке в противном случае.
-    # Если выполнять robocopy с ключём /mir без отдельного удаления места назначения - случается бьются файлы!
     cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s cmd /c ' \
           r'"if exist %s ( del /f/s/q %s > nul & rd /s/q %s )"' \
           % (h2, Globals.samba_login, Globals.samba_password, p2, p2, p2)
@@ -91,7 +90,7 @@ def copy_from_to(h1, p1, h2, p2, identifiers=[]):
 
     # https://ss64.com/nt/robocopy.html
     # https://ss64.com/nt/xcopy.html
-    robocopy_options = [r'/e', r'/b', r'/r:0', r'/w:0']
+    robocopy_options = [r'/e', r'/b', r'/mt', r'/r:0', r'/w:0']
     robocopy_options += [r'/np', r'/nfl', r'/njh', r'/njs', r'/ndl', r'/nc', r'/ns']  # silent
     if h1:
         cmd = ['PsExec.exe', '-accepteula', '-nobanner', '\\\\' + h1,
