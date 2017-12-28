@@ -90,7 +90,7 @@ def copy_from_to(h1, p1, h2, p2, identifiers=[]):
 
     # https://ss64.com/nt/robocopy.html
     # https://ss64.com/nt/xcopy.html
-    robocopy_options = [r'/e', r'/b', r'/mt:64', r'/r:0', r'/w:0']
+    robocopy_options = [r'/e', r'/b', r'/mt:32', r'/r:0', r'/w:0']
     robocopy_options += [r'/np', r'/nfl', r'/njh', r'/njs', r'/ndl', r'/nc', r'/ns']  # silent
     if h1:
         cmd = ['PsExec.exe', '-accepteula', '-nobanner', '\\\\' + h1,
