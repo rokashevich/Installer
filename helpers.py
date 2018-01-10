@@ -39,7 +39,7 @@ from globals import Globals
 
 def discover_lan_hosts():
     return [host.replace('\\', '').strip().lower() for host in str(
-        subprocess.run(r'net view /all', stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout).split(r'\r\n')
+        subprocess.run(r'net view /all', shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout).split(r'\r\n')
             if host.startswith('\\\\')]
 
 
@@ -81,7 +81,7 @@ def md5sum(dir):
 def copy_from_to(h1, p1, h2, p2, identifiers=[]):
     # Возвращаем пустую строку ('') в случае успеха,
     # и строку с, по возможнсоти, содержательным сообщением об ошибке в противном случае.
-    cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s cmd /c ' \
+    cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s cmd /c ' \
           r'"if exist %s ( del /f/s/q %s > nul & rd /s/q %s )"' \
           % (h2, Globals.samba_login, Globals.samba_password, p2, p2, p2)
     r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -89,25 +89,18 @@ def copy_from_to(h1, p1, h2, p2, identifiers=[]):
         return 'cmd=%s ret=%d stdout=%s stderr=%s' % (cmd, r.returncode, r.stdout, r.stderr)
 
     # https://ss64.com/nt/robocopy.html
-    # https://ss64.com/nt/xcopy.html
     robocopy_options = [r'/e', r'/b', r'/mt:32', r'/r:0', r'/w:0']
     robocopy_options += [r'/np', r'/nfl', r'/njh', r'/njs', r'/ndl', r'/nc', r'/ns']  # silent
     if h1:
         cmd = ['PsExec.exe', '-accepteula', '-nobanner', '\\\\' + h1,
                '-u', Globals.samba_login, '-p', Globals.samba_password,
                'robocopy', p1, r'\\%s\%s' % (h2, p2.replace(':', '$'))] + robocopy_options
-        # 'xcopy', r'/j', r'/s', r'/i'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
     else:
         cmd = ['robocopy'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + robocopy_options
-        # cmd = ['xcopy', r'/j', r'/s', r'/i'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')]
-    print(' '.join(cmd))
 
     r = subprocess.Popen(cmd)
     identifiers.append(r)
     returncode = r.wait()
-
-    #r = subprocess.run(cmd)
-    #returncode = r.returncode
 
     # https://ss64.com/nt/robocopy-exit.html
     # 16 ***FATAL ERROR***
@@ -128,10 +121,5 @@ def copy_from_to(h1, p1, h2, p2, identifiers=[]):
     #  1 COPY OK
     #  0 --no change--
     if returncode == 1:
-        #cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -c sync64.exe' % (h2, Globals.samba_login, Globals.samba_password, p2, p2, p2)
-        #r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        #if r.returncode != 0:
-        #    return 'cmd=%s returncode=%d' % (cmd, r.returncode)
         return ''
     return 'cmd=%s returncode=%d' % (' '.join(cmd), r.returncode)
-
