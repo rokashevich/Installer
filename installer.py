@@ -57,10 +57,6 @@ class Host:
         PRE_RUNNING = auto()
         PRE_SUCCESS = auto()
         PRE_FAILURE = auto()
-        MD5_NON_NEEDED = auto()
-        MD5_RUNNING = auto()
-        MD5_SUCCESS = auto()
-        MD5_FAILURE = auto()
         SUCCESS = auto()
         FAILURE = auto()
         CANCELING = auto()
@@ -74,12 +70,10 @@ class TableData:
             self.base_timer = -1
             self.conf_counter_total = 0
             self.conf_counter_overwrite = 0
-            self.verify_timer = -1
             self.installation_timer = 0
             self.base_state = Host.State.IDLE
             self.conf_state = Host.State.IDLE
             self.pre_state = Host.State.IDLE
-            self.md5_state = Host.State.IDLE
             self.state = Host.State.IDLE
 
     def __init__(self, source, destination=''):
@@ -197,14 +191,6 @@ class Installer(QWidget):
                         text = 'Установлен base, conf (всего %d, перезаписано %d); выполнен pre-скрипт' \
                                % (host.conf_counter_total, host.conf_counter_overwrite)
                         background_color = '#63e60f'
-                    elif host.state == Host.State.MD5_RUNNING:
-                        text = 'Установлен base (%s)' % helpers.seconds_to_human(host.base_timer)
-                        if host.conf_state == Host.State.CONF_SUCCESS:
-                            text += '; conf (всего %d, перезаписано %d)' % (host.conf_counter_total, host.conf_counter_overwrite)
-                        if host.pre_state == Host.State.PRE_SUCCESS:
-                            text += '; pre-скрипт выполнен'
-                        text += '; проверка md5... (%s)' % helpers.seconds_to_human(host.verify_timer)
-                        background_color = '#63e60f'
                     elif host.state == Host.State.SUCCESS:
                         text = 'Установлен base (%s)' % helpers.seconds_to_human(host.base_timer)
                         if host.conf_state == Host.State.CONF_SUCCESS:
@@ -212,7 +198,6 @@ class Installer(QWidget):
                                                                             host.conf_counter_overwrite)
                         if host.pre_state == Host.State.PRE_SUCCESS:
                             text += '; pre-скрипт выполнен'
-                        text += '; проверка md5 (%s) — УСПЕХ' % helpers.seconds_to_human(host.verify_timer)
                         background_color = '#00eb00'
                     elif host.state == Host.State.FAILURE:
                         text = 'ОШИБКА'
@@ -691,86 +676,6 @@ class Installer(QWidget):
                     self.table_changed.emit()
         self.worker_needed.emit()
 
-    def do_verify(self, host):
-        # Проверка установки на одном хосте (host)
-        #
-        # ПРИНЦИП РАБОТЫ
-        #
-        # 1. Сравниваем удалённый base.txt с локальным, что они одинаковые (по md5)
-        # 2. Копируем verify.bat на удалённый хост в C:\Windows\Temp с уникальным именем (используем timestamp)
-        # 3. Запускаем на удалённом хосте "C:\Windows\Temp\timestamp.bat self.installation_path.text()"
-        # 4. Ожидаем появления \\host.hostname\C:\Windows\Temp\timestamp.txt с результатом выполнения предыдущего пункта
-
-        host.state = host.md5_state = Host.State.MD5_RUNNING
-
-        def timer():
-            while host.state == Host.State.MD5_RUNNING:
-                if not threading.main_thread().is_alive():
-                    sys.exit()
-                host.verify_timer += 1
-                self.table_changed.emit()
-                time.sleep(1)
-
-        threading.Thread(target=timer).start()
-
-        # 1 TODO: потом сделаю
-
-        # 2
-        u = timestamp.strftime('%Y%m%d%H%M%S')  # unique
-        r = '\\\\%s\\C$\\' % host.hostname  # remote
-        l = 'C:\\'  # local
-        c = r'Windows\Temp\%s' % u  # constant
-        try:
-            shutil.copyfile('verify.bat', r + c + '.bat')
-        except:
-            logger.message_appeared.emit('*** Ошибка копирования verify.bat на %s' % host.hostname)
-            host.state = host.md5_state = Host.State.FAILURE
-            self.worker_needed.emit()
-
-        # 3
-        p = subprocess.run('wmic /node:"%s" /user:"' % host.hostname
-                           + Globals.samba_login + r'" /password:"' + Globals.samba_password
-                           + r'" process call create "%s%s.bat %s"'
-                           % (l, c, self.installation_path.text()), stdout=subprocess.PIPE)
-        if p.returncode:
-            logger.message_appeared.emit('*** Ошибка выполнения команды: %s' % str(p.args))
-            host.state = host.md5_state = Host.State.FAILURE
-
-        try:
-            pid = re.findall(r'ProcessId = (.*?);', str(p.stdout))
-        except:
-            pid = []
-        # 4
-        while True:
-            if os.path.exists(r + c + '.txt'):
-                with open(r + c + '.txt') as f:
-                    for line in [line.strip() for line in f.readlines()]:
-                        if line == 'success':
-                            host.state = host.md5_state = Host.State.SUCCESS
-                        else:
-                            if line.startswith('error'):
-                                error_msg = line.split(' ', maxsplit=1)[1]
-                                logger.message_appeared.emit('*** Ошибка проверки %s: %s' % (host.hostname, error_msg))
-                                host.state = host.md5_state = Host.State.FAILURE
-                self.table_changed.emit()
-                self.worker_needed.emit()
-                break
-            if host.state == Host.State.CANCELING:
-                logger.message_appeared.emit('--- Инфо: %s: остановка проверки md5' % host.hostname)
-                if len(pid):
-                    subprocess.run(r'taskkill /s %s /u %s /p %s /t /f /pid %s'
-                                   % (host.hostname, Globals.samba_login, Globals.samba_password, pid[0]))
-                host.state = Host.State.IDLE
-                self.table_changed.emit()
-                break
-            time.sleep(3)  # Проверяем наличие файла раз в 3 секунды (просто так взято число)
-        try:  # Делаем попытку удалить временные файлы не важно с каким результатом
-            os.unlink(r + c + '.bat')
-            os.unlink(r + c + '.txt')
-            os.unlink(r + c + '.part.txt')
-        except:
-            pass
-
     def worker(self):
         if not self.state == Installer.State.INSTALLING:
             self.state = Installer.State.INSTALLING
@@ -836,13 +741,8 @@ class Installer(QWidget):
         elif self.is_distribution_with_conf and not self.is_prepare_script_used:
             success_state = Host.State.CONF_SUCCESS
 
-        # Проверка md5 и выставление флага общего успеха
         for host in [host for host in self.table.model().data.hosts if host.checked]:
-            if host.state == success_state:
-                threading.Thread(target=self.do_verify, args=(host,)).start()
-
-        for host in [host for host in self.table.model().data.hosts if host.checked]:
-            if host.state != Host.State.SUCCESS:
+            if host.state != success_state:
                 return
 
         self.state = Installer.State.PRE_INSTALL_SELECTED
