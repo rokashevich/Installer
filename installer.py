@@ -587,11 +587,57 @@ class Installer(QWidget):
                     except:
                         pass
 
+        def copy_from_to(h1, p1, h2, p2):
+            # Возвращаем пустую строку ('') в случае успеха,
+            # и строку с, по возможнсоти, содержательным сообщением об ошибке в противном случае.
+            cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s cmd /c ' \
+                  r'"if exist %s ( del /f/s/q %s > nul & rd /s/q %s )"' \
+                  % (h2, Globals.samba_login, Globals.samba_password, p2, p2, p2)
+            print(cmd)
+            r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if r.returncode != 0:
+                return 'cmd=%s ret=%d stdout=%s stderr=%s' % (cmd, r.returncode, r.stdout, r.stderr)
+
+            # https://ss64.com/nt/robocopy.html
+            robocopy_options = [r'/e', r'/mt:32', r'/r:0', r'/w:0']
+            robocopy_options += [r'/np', r'/nfl', r'/njh', r'/njs', r'/ndl', r'/nc', r'/ns']  # silent
+            if h1:
+                cmd = ['PsExec.exe', '-accepteula', '-nobanner', '\\\\' + h1,
+                       '-u', Globals.samba_login, '-p', Globals.samba_password,
+                       'robocopy', p1, r'\\%s\%s' % (h2, p2.replace(':', '$'))] + robocopy_options
+            else:
+                cmd = ['robocopy'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + robocopy_options
+            print(' '.join(cmd))
+            r = subprocess.Popen(cmd)
+            identifiers.append(r)
+            returncode = r.wait()
+
+            # https://ss64.com/nt/robocopy-exit.html
+            # 16 ***FATAL ERROR***
+            # 15 FAIL MISM XTRA COPY
+            # 14 FAIL MISM XTRA
+            # 13 FAIL MISM COPY
+            # 12 FAIL MISM
+            # 11 FAIL XTRA COPY
+            # 10 FAIL XTRA
+            #  9 FAIL COPY
+            #  8 FAIL
+            #  7 MISM XTRA COPY OK
+            #  6 MISM XTRA OK
+            #  5 MISM COPY OK
+            #  4 MISM OK
+            #  3 XTRA COPY OK
+            #  2 XTRA OK
+            #  1 COPY OK
+            #  0 --no change--
+            if returncode != 1:
+                return 'cmd=%s returncode=%d' % (' '.join(cmd), r.returncode)
+            return ''
+
         threading.Thread(target=timer).start()
         source_hostname = source_host.hostname if source_host else None
         source_path = self.installation_path.text() if source_host else self.distribution.base
-        r = helpers.copy_from_to(source_hostname, source_path, destination_host.hostname, self.installation_path.text().strip()
-                                 , identifiers=identifiers)
+        r = copy_from_to(source_hostname, source_path, destination_host.hostname, self.installation_path.text().strip())
         if destination_host.state == Host.State.CANCELING:
             destination_host.state = Host.State.IDLE
             if source_host:
@@ -602,7 +648,17 @@ class Installer(QWidget):
                 logger.message_appeared.emit('*** %s: ошибка копирования base: %s' % (destination_host.hostname, r))
                 destination_host.state = destination_host.base_state = Host.State.FAILURE
             else:
-                destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
+                # Проверяем base.txt
+                cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -v tools\verify-base.exe' \
+                      % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
+                         self.installation_path.text().strip())
+                print(cmd)
+                r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if r.returncode != 0:
+                    destination_host.state = destination_host.base_state = Host.State.FAILURE
+                    return 'cmd=%s ret=%d stdout=%s stderr=%s' % (cmd, r.returncode, r.stdout, r.stderr)
+                else:
+                    destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
 
             if source_host:
                 source_host.state = Host.State.BASE_SUCCESS
