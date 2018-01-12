@@ -68,6 +68,7 @@ class TableData:
             self.hostname = hostname
             self.checked = checked
             self.base_timer = -1
+            self.md5_timer = -1
             self.conf_counter_total = 0
             self.conf_counter_overwrite = 0
             self.installation_timer = 0
@@ -174,28 +175,41 @@ class Installer(QWidget):
 
             def paint(self, painter, option, index):
                 host = index.data()
+
+                base_time = ''
+                if host.base_timer >= 0:
+                    if host.md5_timer < 0:
+                        base_time = ' (установка %s)' % helpers.seconds_to_human(host.base_timer)
+                    else:
+                        base_time = ' (установка %s, проверка %s)' % (helpers.seconds_to_human(host.base_timer),
+                                                                      helpers.seconds_to_human(host.md5_timer))
+
+                conf_stat = ''
+                if host.conf_counter_total >= 0:
+                    if host.conf_counter_overwrite > 0:
+                        conf_stat = ' (всего %d, перезаписано %d)' % (host.conf_counter_total,
+                                                                      host.conf_counter_overwrite)
+                    else:
+                        conf_stat = ' (всего %d)' % host.conf_counter_total
+
                 if host.checked:
                     pen_color = '#000'
                     if host.state == Host.State.BASE_INSTALLING_DESTINATION:
-                        text = 'Копирование base... (%s)' % helpers.seconds_to_human(host.base_timer)
+                        text = 'Копирование base...%s' % base_time
                         background_color = '#f4f928'
                     elif host.state == Host.State.BASE_SUCCESS or host.state == Host.State.BASE_INSTALLING_SOURCE:
-                        text = 'Установлен base (%s)' % helpers.seconds_to_human(host.base_timer)
+                        text = 'Установлен base%s' % base_time
                         background_color = '#c5f31f'
                     elif host.state == Host.State.CONF_SUCCESS:
-                        text = 'Установлен base %s, conf (всего %d, перезаписано %d)' \
-                               % (helpers.seconds_to_human(host.base_timer),
-                                  host.conf_counter_total, host.conf_counter_overwrite)
+                        text = 'Установлен base%s, conf%s' % (base_time, conf_stat)
                         background_color = '#94ed17'
                     elif host.state == Host.State.PRE_SUCCESS:
-                        text = 'Установлен base, conf (всего %d, перезаписано %d); выполнен pre-скрипт' \
-                               % (host.conf_counter_total, host.conf_counter_overwrite)
+                        text = 'Установлен base%s, conf%s; выполнен pre-скрипт' % (base_time, conf_stat)
                         background_color = '#63e60f'
                     elif host.state == Host.State.SUCCESS:
-                        text = 'Установлен base (%s)' % helpers.seconds_to_human(host.base_timer)
+                        text = 'Установлен base%s' % base_time
                         if host.conf_state == Host.State.CONF_SUCCESS:
-                            text += '; conf (всего %d, перезаписано %d)' % (host.conf_counter_total,
-                                                                            host.conf_counter_overwrite)
+                            text += '; conf%s' % conf_stat
                         if host.pre_state == Host.State.PRE_SUCCESS:
                             text += '; pre-скрипт выполнен'
                         background_color = '#00eb00'
@@ -576,7 +590,10 @@ class Installer(QWidget):
             while destination_host.state == Host.State.BASE_INSTALLING_DESTINATION:
                 if not threading.main_thread().is_alive():
                     return
-                destination_host.base_timer += 1
+                if destination_host.md5_timer >= 0:
+                    destination_host.md5_timer += 1
+                else:
+                    destination_host.base_timer += 1
                 self.table_changed.emit()
                 time.sleep(1)
             if destination_host.state == Host.State.CANCELING:
@@ -649,10 +666,10 @@ class Installer(QWidget):
                 destination_host.state = destination_host.base_state = Host.State.FAILURE
             else:
                 # Проверяем base.txt
-                cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -v tools\verify-base.exe' \
+                cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -v verify-base.exe' \
                       % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
                          self.installation_path.text().strip())
-                print(cmd)
+                destination_host.md5_timer = 0
                 r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if r.returncode != 0:
                     destination_host.state = destination_host.base_state = Host.State.FAILURE
