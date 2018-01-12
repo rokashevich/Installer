@@ -212,6 +212,7 @@ class Installer(QWidget):
                             text += '; conf%s' % conf_stat
                         if host.pre_state == Host.State.PRE_SUCCESS:
                             text += '; pre-скрипт выполнен'
+                        text += ' - УСПЕХ'
                         background_color = '#00eb00'
                     elif host.state == Host.State.FAILURE:
                         text = 'ОШИБКА'
@@ -271,7 +272,6 @@ class Installer(QWidget):
         self.prepare_process_download = None
         self.prepare_process_unzip = None
         self.is_distribution_with_conf = False
-        self.is_prepare_script_used = False
 
         self.copy_conf_in_progress = False
 
@@ -610,8 +610,7 @@ class Installer(QWidget):
             cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s cmd /c ' \
                   r'"if exist %s ( del /f/s/q %s > nul & rd /s/q %s )"' \
                   % (h2, Globals.samba_login, Globals.samba_password, p2, p2, p2)
-            print(cmd)
-            r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if r.returncode != 0:
                 return 'cmd=%s ret=%d stdout=%s stderr=%s' % (cmd, r.returncode, r.stdout, r.stderr)
 
@@ -625,7 +624,7 @@ class Installer(QWidget):
             else:
                 cmd = ['robocopy'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + robocopy_options
             print(' '.join(cmd))
-            r = subprocess.Popen(cmd)
+            r = subprocess.Popen(cmd, shell=True)
             identifiers.append(r)
             returncode = r.wait()
 
@@ -670,10 +669,10 @@ class Installer(QWidget):
                       % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
                          self.installation_path.text().strip())
                 destination_host.md5_timer = 0
-                r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if r.returncode != 0:
                     destination_host.state = destination_host.base_state = Host.State.FAILURE
-                    return 'cmd=%s ret=%d stdout=%s stderr=%s' % (cmd, r.returncode, r.stdout, r.stderr)
+                    logger.message_appeared.emit('cmd=%s ret=%d stdout=%s stderr=%s' % (cmd, r.returncode, r.stdout, r.stderr))
                 else:
                     destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
 
@@ -724,29 +723,23 @@ class Installer(QWidget):
         self.worker_needed.emit()
 
     def do_run_pre_script(self):
-        s = os.path.join(self.distribution.configurations_dir,
-                         self.configurations[self.configurations_list.currentIndex().row()],
-                         'common', 'etc',
-                         self.pre_install_scripts_combo.currentText())
-        if os.path.exists(s):
-            self.is_prepare_script_used = True
-            s = os.path.join(self.installation_path.text(), 'etc', self.pre_install_scripts_combo.currentText())
-            for host in [host for host in self.table.model().data.hosts if host.checked]:
-                if host.state == Host.State.CANCELING:
-                    host.state = Host.State.IDLE
-                    self.table_changed.emit()
-                    continue
-                if host.state == Host.State.CONF_SUCCESS:
-                    cmd = r'psexec \\' + host.hostname + ' -u ' + Globals.samba_login + ' -p ' + Globals.samba_password \
-                          + ' ' + s
-                    r = subprocess.run(cmd)
-                    if r.returncode:
-                        host.state = host.pre_state = Host.State.FAILURE
-                        logger.message_appeared.emit('*** Ошибка выполнения pre-скрипта: command=%s returncode=%d'
-                                                     % (cmd, r.returncode))
-                    else:
-                        host.state = host.pre_state = Host.State.PRE_SUCCESS
-                    self.table_changed.emit()
+        s = os.path.join(self.installation_path.text(), 'etc', self.pre_install_scripts_combo.currentText())
+        for host in [host for host in self.table.model().data.hosts if host.checked]:
+            if host.state == Host.State.CANCELING:
+                host.state = Host.State.IDLE
+                self.table_changed.emit()
+                continue
+            if host.state == Host.State.CONF_SUCCESS:
+                cmd = r'psexec \\' + host.hostname + ' -u ' + Globals.samba_login + ' -p ' + Globals.samba_password \
+                      + ' ' + s
+                r = subprocess.run(cmd, shell=True)
+                if r.returncode:
+                    host.state = host.pre_state = Host.State.FAILURE
+                    logger.message_appeared.emit('*** Ошибка выполнения pre-скрипта: command=%s returncode=%d'
+                                                 % (cmd, r.returncode))
+                else:
+                    host.state = host.pre_state = Host.State.PRE_SUCCESS
+                self.table_changed.emit()
         self.worker_needed.emit()
 
     def worker(self):
@@ -800,7 +793,13 @@ class Installer(QWidget):
                 return
 
         # Выполнение pre-скриптов
-        if self.is_prepare_script_used:
+        s = os.path.join(self.distribution.configurations_dir,
+                         self.configurations[self.configurations_list.currentIndex().row()],
+                         'common', 'etc',
+                         self.pre_install_scripts_combo.currentText())
+        is_prepare_script_used = False
+        if os.path.exists(s):
+            is_prepare_script_used = True
             for host in [host for host in self.table.model().data.hosts if host.checked]:
                 if host.state == Host.State.CONF_SUCCESS:
                     threading.Thread(target=self.do_run_pre_script).start()
@@ -809,9 +808,9 @@ class Installer(QWidget):
         # В зависимости от типа дистрибутива рассчитываем признак успеха установки (до проверки!)
         # TODO: вынести это во вне чтобы выполнялось один раз
         success_state = Host.State.BASE_SUCCESS
-        if self.is_distribution_with_conf and self.is_prepare_script_used:
+        if self.is_distribution_with_conf and is_prepare_script_used:
             success_state = Host.State.PRE_SUCCESS
-        elif self.is_distribution_with_conf and not self.is_prepare_script_used:
+        elif self.is_distribution_with_conf and not is_prepare_script_used:
             success_state = Host.State.CONF_SUCCESS
 
         for host in [host for host in self.table.model().data.hosts if host.checked]:
@@ -929,9 +928,9 @@ class Installer(QWidget):
         if os.path.exists(unpack_to):
             logger.message_appeared.emit('--- Удаление дистрибутива, распакованного в прошлый раз')
             shutil.rmtree(unpack_to)
-        cmd = '7za.exe x '+file+' -o'+unpack_to
+        cmd = '7za.exe x '+file+' -aoa -o'+unpack_to
         logger.message_appeared.emit('--- >%s' % cmd)
-        subprocess.run(cmd)
+        subprocess.run(cmd, shell=True)
         return unpack_to
 
     def on_title_changed(self):
