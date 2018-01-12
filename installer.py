@@ -53,10 +53,10 @@ class Host:
         CONF_INSTALLING = auto()
         CONF_SUCCESS = auto()
         CONF_FAILURE = auto()
-        PRE_NON_NEEDED = auto()
-        PRE_RUNNING = auto()
-        PRE_SUCCESS = auto()
-        PRE_FAILURE = auto()
+        POST_NON_NEEDED = auto()
+        POST_RUNNING = auto()
+        POST_SUCCESS = auto()
+        POST_FAILURE = auto()
         SUCCESS = auto()
         FAILURE = auto()
         CANCELING = auto()
@@ -74,7 +74,7 @@ class TableData:
             self.installation_timer = 0
             self.base_state = Host.State.IDLE
             self.conf_state = Host.State.IDLE
-            self.pre_state = Host.State.IDLE
+            self.post_state = Host.State.IDLE
             self.state = Host.State.IDLE
 
     def __init__(self, source, destination=''):
@@ -130,7 +130,7 @@ class Installer(QWidget):
         PREPARING = auto()  # скачивание/распаковка дистрибутива: всё disabled, кроме browse>stop
         PREPARED = auto()  # дистрибутив распакован: stop>browse, конфигурации, остальное заблокировано
         CONF_SELECTED = auto()  # выбрана конфигурация: всё разблокировано
-        PRE_INSTALL_SELECTED = auto()  # выбран скрипт pre-install, если есть
+        POST_INSTALL_SELECTED = auto()  # выбран скрипт post-install, если есть
         INSTALLING = auto()  # установка: start>stop, остальное заблокировано
 
     class Distribution:
@@ -203,15 +203,15 @@ class Installer(QWidget):
                     elif host.state == Host.State.CONF_SUCCESS:
                         text = 'Установлен base%s, conf%s' % (base_time, conf_stat)
                         background_color = '#94ed17'
-                    elif host.state == Host.State.PRE_SUCCESS:
-                        text = 'Установлен base%s, conf%s; выполнен pre-скрипт' % (base_time, conf_stat)
+                    elif host.state == Host.State.POST_SUCCESS:
+                        text = 'Установлен base%s, conf%s; выполнен post-скрипт' % (base_time, conf_stat)
                         background_color = '#63e60f'
                     elif host.state == Host.State.SUCCESS:
                         text = 'Установлен base%s' % base_time
                         if host.conf_state == Host.State.CONF_SUCCESS:
                             text += '; conf%s' % conf_stat
-                        if host.pre_state == Host.State.PRE_SUCCESS:
-                            text += '; pre-скрипт выполнен'
+                        if host.post_state == Host.State.POST_SUCCESS:
+                            text += '; post-скрипт выполнен'
                         text += ' - УСПЕХ'
                         background_color = '#00eb00'
                     elif host.state == Host.State.FAILURE:
@@ -266,7 +266,7 @@ class Installer(QWidget):
         self.configurations = []
         self.table_data_dict = {}
 
-        self.pre_install_scripts_dict = {}
+        self.post_install_scripts_dict = {}
 
         self.prepare_message = ''
         self.prepare_process_download = None
@@ -278,8 +278,8 @@ class Installer(QWidget):
         self.button_browse = QPushButton()
         self.configurations_list = PyQt5.QtWidgets.QListView()
         self.installation_path = QLineEdit()
-        self.pre_install_scripts_combo = PyQt5.QtWidgets.QComboBox()
-        self.pre_install_scripts_combo.addItem("")
+        self.post_install_scripts_combo = PyQt5.QtWidgets.QComboBox()
+        self.post_install_scripts_combo.addItem("")
 
         self.button_start_stop = QPushButton('➤ Старт')
         self.button_console = QPushButton('📜 Лог')
@@ -302,7 +302,7 @@ class Installer(QWidget):
 
         gl.addWidget(self.configurations_list,       1, 0, 1, 4)  #
         gl.addWidget(self.installation_path,         2, 0, 1, 4)  # Элементы друг над другом
-        gl.addWidget(self.pre_install_scripts_combo, 3, 0, 1, 4)  #
+        gl.addWidget(self.post_install_scripts_combo, 3, 0, 1, 4)  #
 
         gl.addWidget(self.stacked,                   0, 4, -1, 1)  # Контейнер: консоль или лог
 
@@ -324,7 +324,7 @@ class Installer(QWidget):
         self.state_changed.connect(self.on_state_changed)
         self.table_changed.connect(self.on_table_changed)
         self.worker_needed.connect(self.worker)
-        self.pre_install_scripts_combo.activated.connect(self.on_pre_install_scripts_combo_changed)
+        self.post_install_scripts_combo.activated.connect(self.on_post_install_scripts_combo_changed)
         self.window_title_changed.connect(self.on_title_changed)
         logger.message_appeared.connect(self.on_message_appeared)
 
@@ -367,7 +367,7 @@ class Installer(QWidget):
             self.button_toggle_select.setDisabled(True)
             self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
             self.button_browse.setEnabled(True)
-            self.pre_install_scripts_combo.setDisabled(True)
+            self.post_install_scripts_combo.setDisabled(True)
             self.table.setDisabled(True)
 
         elif self.state == Installer.State.PREPARING:
@@ -377,7 +377,7 @@ class Installer(QWidget):
             self.button_toggle_select.setDisabled(True)
             self.button_browse.setText('❌ Отменить')
             self.button_browse.setEnabled(True)
-            self.pre_install_scripts_combo.setDisabled(True)
+            self.post_install_scripts_combo.setDisabled(True)
             self.table.setDisabled(True)
 
         # Распакован архив
@@ -389,7 +389,7 @@ class Installer(QWidget):
             self.installation_path.setEnabled(True)
             self.configurations_list.setModel(PyQt5.QtCore.QStringListModel(self.configurations))
             self.configurations_list.selectionModel().currentChanged.connect(self.on_conf_selected)
-            self.pre_install_scripts_combo.setDisabled(True)
+            self.post_install_scripts_combo.setDisabled(True)
             self.button_start_stop.setDisabled(True)
 
             self.configurations_list.setMinimumWidth(
@@ -400,17 +400,17 @@ class Installer(QWidget):
             self.table.setDisabled(True)
             self.window_title_changed.emit()
 
-        # Выбран pre-install
-        elif self.state == Installer.State.PRE_INSTALL_SELECTED:
-            combo_list = self.pre_install_scripts_dict[
+        # Выбран post-install
+        elif self.state == Installer.State.POST_INSTALL_SELECTED:
+            combo_list = self.post_install_scripts_dict[
                 self.configurations[
                     self.configurations_list.currentIndex().row()]]
             if not combo_list:
-                self.pre_install_scripts_combo.setEnabled(False)
+                self.post_install_scripts_combo.setEnabled(False)
             elif len(combo_list) == 1:
-                self.pre_install_scripts_combo.setEnabled(True)
+                self.post_install_scripts_combo.setEnabled(True)
             else:
-                self.pre_install_scripts_combo.setEnabled(True)
+                self.post_install_scripts_combo.setEnabled(True)
             self.button_start_stop.setText('➤ Старт')
             self.button_start_stop.setEnabled(True)
 
@@ -423,7 +423,7 @@ class Installer(QWidget):
             self.installation_path.setDisabled(True)
             self.button_start_stop.setText('❌ Стоп')
             self.button_start_stop.setEnabled(False)
-            self.pre_install_scripts_combo.setDisabled(True)
+            self.post_install_scripts_combo.setDisabled(True)
             self.table.setEnabled(True)
 
     def on_clicked_table(self, index):
@@ -460,8 +460,8 @@ class Installer(QWidget):
         self.installation_path.setEnabled(True)
         self.installation_path.setText(self.table_data_dict[key].destination)
         # Отображение combo box
-        self.pre_install_scripts_combo.setModel(PyQt5.QtCore.QStringListModel(self.pre_install_scripts_dict[key]))
-        self.on_pre_install_scripts_combo_changed(0)
+        self.post_install_scripts_combo.setModel(PyQt5.QtCore.QStringListModel(self.post_install_scripts_dict[key]))
+        self.on_post_install_scripts_combo_changed(0)
 
         # Выставляем новые данные в правой панели
         self.merge_hosts_from_configuration(key)
@@ -488,26 +488,26 @@ class Installer(QWidget):
                 self.table.model().data.add_host(host, checked=False)
         self.table_changed.emit()
 
-    def on_pre_install_scripts_combo_changed(self, index):  # Выбрали мышкой pre-install скрипт
+    def on_post_install_scripts_combo_changed(self, index):  # Выбрали мышкой post-install скрипт
         # Возможные варианты list:
         # Вариант 1:
         # 0 - Pre-скрипты отсутствуют
         # Вариант 2:
-        # 0 - pre-single-script.bat
-        # 1 - Не выполнять pre-скрипт
+        # 0 - post-single-script.bat
+        # 1 - Не выполнять post-скрипт
         # Вариант 3:
-        # 0 - Выбрать pre-скрипт
-        # 1 - pre-script-1.bat
-        # 2 - pre-script-2.bat
-        # N - pre-script-N.bat
-        # Последний - Не выполнять pre-скрипт
+        # 0 - Выбрать post-скрипт
+        # 1 - post-script-1.bat
+        # 2 - post-script-2.bat
+        # N - post-script-N.bat
+        # Последний - Не выполнять post-скрипт
         #
-        list = self.pre_install_scripts_combo.model().stringList()
+        list = self.post_install_scripts_combo.model().stringList()
         # Активируем/деактивируем сам комбобокс
         if len(list) > 1:
-            self.pre_install_scripts_combo.setEnabled(True)
+            self.post_install_scripts_combo.setEnabled(True)
         else:
-            self.pre_install_scripts_combo.setDisabled(True)
+            self.post_install_scripts_combo.setDisabled(True)
         # Активируем/деактивируем кнопку СТАРТ
         if (len(list) == 1  # Вариант 1
             or (len(list) == 2)  # Вариант 2
@@ -518,7 +518,7 @@ class Installer(QWidget):
             self.button_start_stop.setEnabled(False)
             self.table.setEnabled(False)
 
-        self.state = Installer.State.PRE_INSTALL_SELECTED
+        self.state = Installer.State.POST_INSTALL_SELECTED
         self.window_title_changed.emit()
 
     def on_clicked_button_browse(self):
@@ -687,6 +687,7 @@ class Installer(QWidget):
             except:
                 return False
             host.conf_counter_total += 1
+            self.worker_needed.emit()
             return True
         hosts = []  # Заполним хостами, на которые надо будет установить conf
         for host in [host for host in self.table.model().data.hosts if host.checked]:
@@ -715,10 +716,9 @@ class Installer(QWidget):
         for host in hosts:
             if host.state != Host.State.FAILURE:
                 host.state = host.conf_state = Host.State.CONF_SUCCESS
-        self.worker_needed.emit()
 
-    def do_run_pre_script(self):
-        s = os.path.join(self.installation_path.text(), 'etc', self.pre_install_scripts_combo.currentText())
+    def do_run_post_script(self):
+        s = os.path.join(self.installation_path.text(), 'etc', self.post_install_scripts_combo.currentText())
         for host in [host for host in self.table.model().data.hosts if host.checked]:
             if host.state == Host.State.CANCELING:
                 host.state = Host.State.IDLE
@@ -729,11 +729,11 @@ class Installer(QWidget):
                       + ' ' + s
                 r = subprocess.run(cmd, shell=True)
                 if r.returncode:
-                    host.state = host.pre_state = Host.State.FAILURE
-                    logger.message_appeared.emit('*** Ошибка выполнения pre-скрипта: command=%s returncode=%d'
+                    host.state = host.post_state = Host.State.FAILURE
+                    logger.message_appeared.emit('*** Ошибка выполнения post-скрипта: command=%s returncode=%d'
                                                  % (cmd, r.returncode))
                 else:
-                    host.state = host.pre_state = Host.State.PRE_SUCCESS
+                    host.state = host.post_state = Host.State.POST_SUCCESS
                 self.table_changed.emit()
         self.worker_needed.emit()
 
@@ -787,24 +787,24 @@ class Installer(QWidget):
                 threading.Thread(target=self.do_copy_conf).start()
                 return
 
-        # Выполнение pre-скриптов
+        # Выполнение post-скриптов
         s = os.path.join(self.distribution.configurations_dir,
                          self.configurations[self.configurations_list.currentIndex().row()],
                          'common', 'etc',
-                         self.pre_install_scripts_combo.currentText())
+                         self.post_install_scripts_combo.currentText())
         is_prepare_script_used = False
         if os.path.exists(s):
             is_prepare_script_used = True
             for host in [host for host in self.table.model().data.hosts if host.checked]:
                 if host.state == Host.State.CONF_SUCCESS:
-                    threading.Thread(target=self.do_run_pre_script).start()
+                    threading.Thread(target=self.do_run_post_script).start()
                     return
 
         # В зависимости от типа дистрибутива рассчитываем признак успеха установки (до проверки!)
         # TODO: вынести это во вне чтобы выполнялось один раз
         success_state = Host.State.BASE_SUCCESS
         if self.is_distribution_with_conf and is_prepare_script_used:
-            success_state = Host.State.PRE_SUCCESS
+            success_state = Host.State.POST_SUCCESS
         elif self.is_distribution_with_conf and not is_prepare_script_used:
             success_state = Host.State.CONF_SUCCESS
 
@@ -812,7 +812,7 @@ class Installer(QWidget):
             if host.state != success_state:
                 return
 
-        self.state = Installer.State.PRE_INSTALL_SELECTED
+        self.state = Installer.State.POST_INSTALL_SELECTED
         self.state_changed.emit()
         self.window_title_changed.emit()
 
@@ -836,7 +836,7 @@ class Installer(QWidget):
         self.prepare_process_unzip = None
         self.configurations = []
         self.table_data_dict = {}
-        self.pre_install_scripts_dict = {}
+        self.post_install_scripts_dict = {}
         self.state = Installer.State.PREPARING
         self.state_changed.emit()
 
@@ -871,16 +871,16 @@ class Installer(QWidget):
                 self.configurations.append(name)
                 self.table_data_dict[name] = table_data
 
-                # Ищем и запоминаем наличие pre-install*.bat
-                g = glob.glob(os.path.join(conf, name, 'common', 'etc', 'pre*.bat'))
+                # Ищем и запоминаем наличие post-install*.bat
+                g = glob.glob(os.path.join(conf, name, 'common', 'etc', 'post*.bat'))
                 g = list(map(lambda i: os.path.basename(i), g))
-                if not g:  # нет pre-install скрипта
-                    self.pre_install_scripts_dict[name] = ['Отсутствет pre-скрипт']
-                elif len(g) == 1:  # один pre-install скрипт
-                    self.pre_install_scripts_dict[name] = g + ["Не выполнять pre-скрипт"]
+                if not g:  # нет post-install скрипта
+                    self.post_install_scripts_dict[name] = ['Отсутствет post-скрипт']
+                elif len(g) == 1:  # один post-install скрипт
+                    self.post_install_scripts_dict[name] = g + ["Не выполнять post-скрипт"]
                 else:  # больше одного скрипта
-                    self.pre_install_scripts_dict[name] = ["Выбрать pre-скрипт"] + g \
-                                                          + ["Не выполнять pre-скрипт"]
+                    self.post_install_scripts_dict[name] = ["Выбрать post-скрипт"] + g \
+                                                          + ["Не выполнять post-скрипт"]
 
         self.configurations.sort()
         self.configurations_changed.emit()
@@ -955,7 +955,7 @@ class Installer(QWidget):
 
         if self.state == Installer.State.INSTALLING:
             title += ' • Установка... ' + helpers.seconds_to_human(self.distribution.installation_timer)
-        elif self.state == Installer.State.PRE_INSTALL_SELECTED:
+        elif self.state == Installer.State.POST_INSTALL_SELECTED:
             if self.distribution.installation_timer > 0:
                 title += ' • Завершено ' + helpers.seconds_to_human(self.distribution.installation_timer)
 
