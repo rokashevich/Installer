@@ -282,9 +282,8 @@ class Installer(QWidget):
         self.pre_install_scripts_combo.addItem("")
 
         self.button_start_stop = QPushButton('➤ Старт')
-        self.button_file_manager = QPushButton('📂')
-        self.button_console = QPushButton('📜')
-        self.button_toggle_select = QPushButton('☑')
+        self.button_console = QPushButton('📜 Лог')
+        self.button_toggle_select = QPushButton('☑ Выбрать все')
 
         self.stacked = PyQt5.QtWidgets.QStackedWidget()
         self.stacked.addWidget(self.table)
@@ -297,16 +296,15 @@ class Installer(QWidget):
         # https://doc.qt.io/qt-5/qgridlayout.html#addWidget-2
 
         gl.addWidget(self.button_browse,             0, 0, 1, 1)  #
-        gl.addWidget(self.button_start_stop,         0, 1, 1, 1)  # Верхний ряд
-        gl.addWidget(self.button_file_manager,       0, 2, 1, 1)  # кнопок
-        gl.addWidget(self.button_console,            0, 3, 1, 1)  #
-        gl.addWidget(self.button_toggle_select,      0, 4, 1, 1)  #
+        gl.addWidget(self.button_start_stop,         0, 1, 1, 1)  # Верхний ряд кнопок
+        gl.addWidget(self.button_console,            0, 2, 1, 1)  #
+        gl.addWidget(self.button_toggle_select,      0, 3, 1, 1)  #
 
-        gl.addWidget(self.configurations_list,       1, 0, 1, 5)  #
-        gl.addWidget(self.installation_path,         2, 0, 1, 5)  # Элементы друг над другом
-        gl.addWidget(self.pre_install_scripts_combo, 3, 0, 1, 5)  #
+        gl.addWidget(self.configurations_list,       1, 0, 1, 4)  #
+        gl.addWidget(self.installation_path,         2, 0, 1, 4)  # Элементы друг над другом
+        gl.addWidget(self.pre_install_scripts_combo, 3, 0, 1, 4)  #
 
-        gl.addWidget(self.stacked,                   0, 5, -1, 1)  # Контейнер: консоль или лог
+        gl.addWidget(self.stacked,                   0, 4, -1, 1)  # Контейнер: консоль или лог
 
         self.setLayout(gl)
 
@@ -320,7 +318,6 @@ class Installer(QWidget):
 
         self.button_browse.clicked.connect(self.on_clicked_button_browse)
         self.button_start_stop.clicked.connect(self.on_clicked_button_start_stop)
-        self.button_file_manager.clicked.connect(self.on_clicked_button_file_manager)
         self.button_console.clicked.connect(self.on_clicked_button_console)
         self.button_toggle_select.clicked.connect(self.on_clicked_button_toggle_select)
         self.table.clicked.connect(self.on_clicked_table)
@@ -426,6 +423,7 @@ class Installer(QWidget):
             self.installation_path.setDisabled(True)
             self.button_start_stop.setText('❌ Стоп')
             self.button_start_stop.setEnabled(False)
+            self.pre_install_scripts_combo.setDisabled(True)
             self.table.setEnabled(True)
 
     def on_clicked_table(self, index):
@@ -552,9 +550,6 @@ class Installer(QWidget):
             logger.message_appeared.emit('--- Всеобщий стоп')
             self.state = Installer.State.PREPARED
 
-    def on_clicked_button_file_manager(self):
-        pass
-
     def do_start_spider(self):
         for host in [host for host in self.table.model().data.hosts if host.checked]:
             if (host.state == Host.State.IDLE
@@ -565,22 +560,22 @@ class Installer(QWidget):
 
     def on_clicked_button_console(self):
         if self.stacked.currentIndex() == 0:
-            self.button_console.setText('💻')
+            self.button_console.setText('💻 Таблица')
             self.stacked.setCurrentIndex(1)
         else:
-            self.button_console.setText('📜')
+            self.button_console.setText('📜 Лог')
             self.stacked.setCurrentIndex(0)
 
     def on_clicked_button_toggle_select(self):
         current_icon = self.button_toggle_select.text()
-        if current_icon == '☑':
-            self.button_toggle_select.setText('☐')
+        if current_icon == '☑ Выбрать все':
+            self.button_toggle_select.setText('☐ Снять выбор')
             for host in self.table.model().data.hosts:
                 host.checked = True
         else:
             for host in self.table.model().data.hosts:
                 host.checked = False
-            self.button_toggle_select.setText('☑')
+            self.button_toggle_select.setText('☑ Выбрать все')
         self.table_changed.emit()
 
     def do_copy_base(self, source_host, destination_host):
