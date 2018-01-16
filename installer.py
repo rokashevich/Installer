@@ -431,6 +431,7 @@ class Installer(QWidget):
         column = index.column()
         host = self.table.model().data.hosts[index.row()]
         if column == 0:
+            print(host.hostname)
             host.checked = not host.checked
         elif column == 1:
             if host.state == Host.State.IDLE:
@@ -456,6 +457,11 @@ class Installer(QWidget):
 
         # Ключ доступа к выбранной конфигурации
         key = self.configurations[self.configurations_list.currentIndex().row()]
+
+        # Отображение combo box
+        self.post_install_scripts_combo.setModel(PyQt5.QtCore.QStringListModel(self.post_install_scripts_dict[key]))
+        self.on_post_install_scripts_combo_changed(0)
+
         if key == 'Выбрать все':
             for host in self.table.model().data.hosts:
                 host.checked = True
@@ -466,9 +472,6 @@ class Installer(QWidget):
             # Выставляем установочный путь из settings.txt
             self.installation_path.setEnabled(True)
             self.installation_path.setText(self.table_data_dict[key].destination)
-            # Отображение combo box
-            self.post_install_scripts_combo.setModel(PyQt5.QtCore.QStringListModel(self.post_install_scripts_dict[key]))
-            self.on_post_install_scripts_combo_changed(0)
 
             # Выставляем новые данные в правой панели
             self.merge_hosts_from_configuration(key)
@@ -837,7 +840,9 @@ class Installer(QWidget):
         self.prepare_process_unzip = None
         self.configurations = ['Выбрать все', 'Снять выбор']
         self.table_data_dict = {}
-        self.post_install_scripts_dict = {}
+        self.post_install_scripts_dict.clear()
+        self.post_install_scripts_dict['Выбрать все'] = ['Отсутствет post-скрипт']
+        self.post_install_scripts_dict['Снять выбор'] = ['Отсутствет post-скрипт']
         self.state = Installer.State.PREPARING
         self.state_changed.emit()
 
@@ -882,6 +887,9 @@ class Installer(QWidget):
                 else:  # больше одного скрипта
                     self.post_install_scripts_dict[name] = ["Выбрать post-скрипт"] + g \
                                                           + ["Не выполнять post-скрипт"]
+        else:
+            self.is_distribution_with_conf = False
+
 
         self.configurations.sort()
         self.configurations_changed.emit()
