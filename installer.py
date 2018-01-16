@@ -59,7 +59,6 @@ class Host:
         POST_FAILURE = auto()
         SUCCESS = auto()
         FAILURE = auto()
-        CANCELING = auto()
 
 
 class TableData:
@@ -218,9 +217,6 @@ class Installer(QWidget):
                     elif host.state == Host.State.FAILURE:
                         text = 'ОШИБКА'
                         background_color = '#ff5533'
-                    elif host.state == Host.State.CANCELING:
-                        text = 'Остановка процесса...'
-                        background_color = '#ffaa33'
                     elif host.state == Host.State.IDLE:
                         text = 'Кликните, чтобы запустить только этот хост'
                         background_color = '#ffffff'
@@ -251,6 +247,7 @@ class Installer(QWidget):
         self.console = PyQt5.QtWidgets.QTextBrowser()
 
         self.distribution = None
+        self.stop = False
 
         self.table = QTableView()
         self.table.setModel(TableModel())
@@ -281,7 +278,7 @@ class Installer(QWidget):
         self.post_install_scripts_combo = PyQt5.QtWidgets.QComboBox()
         self.post_install_scripts_combo.addItem("")
 
-        self.button_start_stop = QPushButton('➤ Старт')
+        self.button_start = QPushButton('➤ Старт')
         self.button_console = QPushButton('📜 Лог')
 
         self.stacked = PyQt5.QtWidgets.QStackedWidget()
@@ -295,7 +292,7 @@ class Installer(QWidget):
         # https://doc.qt.io/qt-5/qgridlayout.html#addWidget-2
 
         gl.addWidget(self.button_browse,             0, 0, 1, 1)  #
-        gl.addWidget(self.button_start_stop,         0, 1, 1, 1)  # Верхний ряд кнопок
+        gl.addWidget(self.button_start,         0, 1, 1, 1)  # Верхний ряд кнопок
         gl.addWidget(self.button_console,            0, 2, 1, 1)  #
 
         gl.addWidget(self.configurations_list,       1, 0, 1, 3)  #
@@ -315,7 +312,7 @@ class Installer(QWidget):
         self.show()
 
         self.button_browse.clicked.connect(self.on_clicked_button_browse)
-        self.button_start_stop.clicked.connect(self.on_clicked_button_start_stop)
+        self.button_start.clicked.connect(self.do_start_spider)
         self.button_console.clicked.connect(self.on_clicked_button_console)
         self.table.clicked.connect(self.on_clicked_table)
         self.state_changed.connect(self.on_state_changed)
@@ -360,7 +357,7 @@ class Installer(QWidget):
         if self.state == Installer.State.DEFAULT:
             self.configurations_list.setDisabled(True)
             self.installation_path.setDisabled(True)
-            self.button_start_stop.setDisabled(True)
+            self.button_start.setDisabled(True)
             self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
             self.button_browse.setEnabled(True)
             self.post_install_scripts_combo.setDisabled(True)
@@ -369,7 +366,7 @@ class Installer(QWidget):
         elif self.state == Installer.State.PREPARING:
             self.configurations_list.setDisabled(True)
             self.installation_path.setDisabled(True)
-            self.button_start_stop.setDisabled(True)
+            self.button_start.setDisabled(True)
             self.button_browse.setText('❌ Отменить')
             self.button_browse.setEnabled(True)
             self.post_install_scripts_combo.setDisabled(True)
@@ -379,12 +376,12 @@ class Installer(QWidget):
         elif self.state == Installer.State.PREPARED:
             self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
             self.button_browse.setEnabled(True)
-            self.button_start_stop.setText('➤ Старт')
+            self.button_start.setText('➤ Старт')
             self.configurations_list.setEnabled(True)
             self.installation_path.setEnabled(True)
 
             if self.configurations_list.model():  # Возвращение в состояние готовности после установки
-                self.button_start_stop.setEnabled(True)
+                self.button_start.setEnabled(True)
                 self.post_install_scripts_combo.setEnabled(True)
                 self.table.setEnabled(True)
             else:  # Первое открытие дистрибутива
@@ -394,13 +391,12 @@ class Installer(QWidget):
                     self.configurations_list.sizeHintForColumn(0)
                     + 2 * self.configurations_list.frameWidth()
                 )
-                self.button_start_stop.setDisabled(True)
+                self.button_start.setDisabled(True)
                 self.post_install_scripts_combo.setDisabled(True)
                 self.table.setDisabled(True)
 
         # Выбран post-install
         elif self.state == Installer.State.POST_INSTALL_SELECTED:
-            print('-POST_INSTALL_SELECTED')
             combo_list = self.post_install_scripts_dict[
                 self.configurations[
                     self.configurations_list.currentIndex().row()]]
@@ -410,18 +406,15 @@ class Installer(QWidget):
                 self.post_install_scripts_combo.setEnabled(True)
             else:
                 self.post_install_scripts_combo.setEnabled(True)
-            self.button_start_stop.setText('➤ Старт')
-            self.button_start_stop.setEnabled(True)
+            self.button_start.setEnabled(True)
 
             self.table.setEnabled(True)
 
         elif self.state == Installer.State.INSTALLING:
-            print('-INSTALLING')
             self.button_browse.setDisabled(True)
             self.configurations_list.setDisabled(True)
             self.installation_path.setDisabled(True)
-            self.button_start_stop.setText('❌ Стоп')
-            self.button_start_stop.setEnabled(False)
+            self.button_start.setDisabled(True)
             self.post_install_scripts_combo.setDisabled(True)
             self.table.setEnabled(True)
 
@@ -513,11 +506,11 @@ class Installer(QWidget):
         # Активируем/деактивируем кнопку СТАРТ
         if (len(list) == 1  # Вариант 1
             or (len(list) == 2)  # Вариант 2
-            or (len(list) > 3) and index != 0):
-            self.button_start_stop.setEnabled(True)
+                or (len(list) > 3) and index != 0):
+            self.button_start.setEnabled(True)
             self.table.setEnabled(True)
         else:
-            self.button_start_stop.setEnabled(False)
+            self.button_start.setEnabled(False)
             self.table.setEnabled(False)
 
         self.state = Installer.State.POST_INSTALL_SELECTED
@@ -544,14 +537,6 @@ class Installer(QWidget):
         else:
             threading.Thread(target=self.prepare_distribution_stop).start()
 
-    def on_clicked_button_start_stop(self):
-        if not self.state == Installer.State.INSTALLING:
-            logger.message_appeared.emit('--- Всеобщий старт')
-            self.do_start_spider()
-        else:
-            logger.message_appeared.emit('--- Всеобщий стоп')
-            self.state = Installer.State.PREPARED
-
     def do_start_spider(self):
         for host in [host for host in self.table.model().data.hosts if host.checked]:
             if (host.state == Host.State.IDLE
@@ -569,30 +554,21 @@ class Installer(QWidget):
             self.stacked.setCurrentIndex(0)
 
     def do_copy_base(self, source_host, destination_host):
-        identifiers = []
-
         def timer():
             while destination_host.state == Host.State.BASE_INSTALLING_DESTINATION:
                 if not threading.main_thread().is_alive():
                     return
+                self.table_changed.emit()
+                time.sleep(1)
                 if destination_host.md5_timer >= 0:
                     destination_host.md5_timer += 1
                 else:
                     destination_host.base_timer += 1
-                self.table_changed.emit()
-                time.sleep(1)
-            if destination_host.state == Host.State.CANCELING:
-                for identifier in identifiers:
-                    try:
-                        logger.message_appeared.emit('--- %s: остановка копирования base' % destination_host.hostname)
-                        identifier.kill()
-                    except:
-                        pass
 
         def copy_from_to(h1, p1, h2, p2):
             cmd = r'taskkill /s %s /u %s /p %s /t /f /im ' % (h2, Globals.samba_login, Globals.samba_password) \
                   + ' /im '.join(self.distribution.executables)
-            subprocess.run(cmd, shell=True)
+            subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
             # Возвращаем пустую строку ('') в случае успеха,
             # и строку с, по возможнсоти, содержательным сообщением об ошибке в противном случае.
@@ -612,9 +588,7 @@ class Installer(QWidget):
                        'robocopy', p1, r'\\%s\%s' % (h2, p2.replace(':', '$'))] + robocopy_options
             else:
                 cmd = ['robocopy'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + robocopy_options
-            print(' '.join(cmd))
             r = subprocess.Popen(cmd, shell=True)
-            identifiers.append(r)
             returncode = r.wait()
 
             # https://ss64.com/nt/robocopy-exit.html
@@ -643,30 +617,25 @@ class Installer(QWidget):
         source_hostname = source_host.hostname if source_host else None
         source_path = self.installation_path.text() if source_host else self.distribution.base
         r = copy_from_to(source_hostname, source_path, destination_host.hostname, self.installation_path.text().strip())
-        if destination_host.state == Host.State.CANCELING:
-            destination_host.state = Host.State.IDLE
-            if source_host:
-                source_host.state = Host.State.BASE_SUCCESS
-            self.table_changed.emit()
+        if r:
+            logger.message_appeared.emit('*** %s: ошибка копирования base: %s' % (destination_host.hostname, r))
+            destination_host.state = destination_host.base_state = Host.State.FAILURE
         else:
-            if r:
-                logger.message_appeared.emit('*** %s: ошибка копирования base: %s' % (destination_host.hostname, r))
+            # Проверяем base.txt
+            cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -v verify-base.exe' \
+                  % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
+                     self.installation_path.text().strip())
+            destination_host.md5_timer = 0
+            r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if r.returncode != 0:
                 destination_host.state = destination_host.base_state = Host.State.FAILURE
+                logger.message_appeared.emit(
+                    'cmd=%s ret=%d stdout=%s stderr=%s' % (cmd, r.returncode, r.stdout, r.stderr))
             else:
-                # Проверяем base.txt
-                cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -v verify-base.exe' \
-                      % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
-                         self.installation_path.text().strip())
-                destination_host.md5_timer = 0
-                r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                if r.returncode != 0:
-                    destination_host.state = destination_host.base_state = Host.State.FAILURE
-                    logger.message_appeared.emit('cmd=%s ret=%d stdout=%s stderr=%s' % (cmd, r.returncode, r.stdout, r.stderr))
-                else:
-                    destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
+                destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
 
-            if source_host:
-                source_host.state = Host.State.BASE_SUCCESS
+        if source_host:
+            source_host.state = Host.State.BASE_SUCCESS
         self.worker_needed.emit()
 
     def do_copy_conf(self):
@@ -684,10 +653,6 @@ class Installer(QWidget):
             return True
         hosts = []  # Заполним хостами, на которые надо будет установить conf
         for host in [host for host in self.table.model().data.hosts if host.checked]:
-            if host.state == Host.State.CANCELING:
-                host.state = Host.State.IDLE
-                self.table_changed.emit()
-                continue
             if host.state == Host.State.BASE_SUCCESS:
                 hosts.append(host)
         conf_name = self.configurations[self.configurations_list.currentIndex().row()]
@@ -714,10 +679,6 @@ class Installer(QWidget):
     def do_run_post_script(self):
         s = os.path.join(self.installation_path.text(), 'etc', self.post_install_scripts_combo.currentText())
         for host in [host for host in self.table.model().data.hosts if host.checked]:
-            if host.state == Host.State.CANCELING:
-                host.state = Host.State.IDLE
-                self.table_changed.emit()
-                continue
             if host.state == Host.State.CONF_SUCCESS:
                 cmd = r'psexec \\' + host.hostname + ' -u ' + Globals.samba_login + ' -p ' + Globals.samba_password \
                       + ' ' + s
