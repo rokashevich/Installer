@@ -144,6 +144,7 @@ class Installer(QWidget):
             self.size = 0
             self.prepare_timer = 0
             self.installation_timer = 0  # <=0 - процесс не запущен, >0 - процесс идёт
+            self.executables = []
 
     configurations_changed = pyqtSignal()
     configuration_changed = pyqtSignal()
@@ -600,6 +601,10 @@ class Installer(QWidget):
                         pass
 
         def copy_from_to(h1, p1, h2, p2):
+            cmd = r'taskkill /s %s /u %s /p %s /t /f /im ' % (h2, Globals.samba_login, Globals.samba_password) \
+                  + ' /im '.join(self.distribution.executables)
+            subprocess.run(cmd, shell=True)
+
             # Возвращаем пустую строку ('') в случае успеха,
             # и строку с, по возможнсоти, содержательным сообщением об ошибке в противном случае.
             cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s cmd /c ' \
@@ -687,7 +692,6 @@ class Installer(QWidget):
             except:
                 return False
             host.conf_counter_total += 1
-            self.worker_needed.emit()
             return True
         hosts = []  # Заполним хостами, на которые надо будет установить conf
         for host in [host for host in self.table.model().data.hosts if host.checked]:
@@ -716,6 +720,7 @@ class Installer(QWidget):
         for host in hosts:
             if host.state != Host.State.FAILURE:
                 host.state = host.conf_state = Host.State.CONF_SUCCESS
+        self.worker_needed.emit()
 
     def do_run_post_script(self):
         s = os.path.join(self.installation_path.text(), 'etc', self.post_install_scripts_combo.currentText())
@@ -809,8 +814,11 @@ class Installer(QWidget):
             success_state = Host.State.CONF_SUCCESS
 
         for host in [host for host in self.table.model().data.hosts if host.checked]:
-            if host.state != success_state:
-                return
+            if host.state != Host.State.SUCCESS:
+                if host.state == success_state:
+                    host.state = Host.State.SUCCESS
+                else:
+                    return
 
         self.state = Installer.State.POST_INSTALL_SELECTED
         self.state_changed.emit()
@@ -896,6 +904,12 @@ class Installer(QWidget):
             self.distribution.name = os.path.basename(self.distribution.uri)
         self.distribution.base_txt = base_txt
         self.distribution.base = os.path.dirname(self.distribution.base_txt)
+
+        # Сканируем дистрибутив и создаём список исполняемых файлов для отстрела перед установкой
+        for root, dirs, files in os.walk(self.distribution.base):
+            for file in files:
+                if file.endswith('.exe'):
+                    self.distribution.executables.append(file)
 
         def get_path_size():
             for dirpath, dirnames, filenames in os.walk(self.distribution.base):
