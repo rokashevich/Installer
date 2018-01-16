@@ -475,19 +475,18 @@ class Installer(QWidget):
         self.merge_hosts_from_configuration(key)
 
     def merge_hosts_from_configuration(self, key):
-        new_hostnames = []
-        for new_host in self.table_data_dict[key].hosts:
-            same_existing_host = None
-            for present_host in self.table.model().data.hosts:
-                if new_host.hostname == present_host.hostname:
-                    same_existing_host = present_host
+        for host in self.table.model().data.hosts:
+            host.checked = False
+
+        for host1 in self.table_data_dict[key].hosts:
+            add_new = True
+            for host2 in self.table.model().data.hosts:
+                if host1.hostname == host2.hostname:
+                    host2.checked = True
+                    add_new = False
                     break
-            if same_existing_host:
-                same_existing_host.checked = True
-            else:
-                new_hostnames.append(new_host.hostname)
-        for new_hostname in new_hostnames:
-            self.table.model().data.add_host(new_hostname)
+            if add_new:
+                self.table.model().data.add_host(host1.hostname)
         self.table_changed.emit()
 
     def merge_hosts_from_discovered(self, hosts):
