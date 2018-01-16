@@ -456,15 +456,24 @@ class Installer(QWidget):
 
         # Ключ доступа к выбранной конфигурации
         key = self.configurations[self.configurations_list.currentIndex().row()]
-        # Выставляем установочный путь из settings.txt
-        self.installation_path.setEnabled(True)
-        self.installation_path.setText(self.table_data_dict[key].destination)
-        # Отображение combo box
-        self.post_install_scripts_combo.setModel(PyQt5.QtCore.QStringListModel(self.post_install_scripts_dict[key]))
-        self.on_post_install_scripts_combo_changed(0)
+        if key == 'Выбрать все':
+            for host in self.table.model().data.hosts:
+                host.checked = True
+        elif key == 'Снять выбор':
+            for host in self.table.model().data.hosts:
+                host.checked = False
+        else:
+            # Выставляем установочный путь из settings.txt
+            self.installation_path.setEnabled(True)
+            self.installation_path.setText(self.table_data_dict[key].destination)
+            # Отображение combo box
+            self.post_install_scripts_combo.setModel(PyQt5.QtCore.QStringListModel(self.post_install_scripts_dict[key]))
+            self.on_post_install_scripts_combo_changed(0)
 
-        # Выставляем новые данные в правой панели
-        self.merge_hosts_from_configuration(key)
+            # Выставляем новые данные в правой панели
+            self.merge_hosts_from_configuration(key)
+
+        self.table_changed.emit()
 
     def merge_hosts_from_configuration(self, key):
         for host in self.table.model().data.hosts:
@@ -479,7 +488,6 @@ class Installer(QWidget):
                     break
             if add_new:
                 self.table.model().data.add_host(host1.hostname)
-        self.table_changed.emit()
 
     def merge_hosts_from_discovered(self, hosts):
         for host in hosts:
@@ -827,7 +835,7 @@ class Installer(QWidget):
         self.prepare_message = ''
         self.prepare_process_download = None
         self.prepare_process_unzip = None
-        self.configurations = []
+        self.configurations = ['Выбрать все', 'Снять выбор']
         self.table_data_dict = {}
         self.post_install_scripts_dict = {}
         self.state = Installer.State.PREPARING
