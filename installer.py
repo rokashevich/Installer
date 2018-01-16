@@ -225,7 +225,7 @@ class Installer(QWidget):
                         text = 'Кликните, чтобы запустить только этот хост'
                         background_color = '#ffffff'
                     elif host.state == Host.State.QUEUED:
-                        text = 'Поставлен в очередь на установку'
+                        text = 'Поставлен в очередь на установку (кликните, чтобы удалить из очереди)'
                         background_color = '#ffffff'
                     else:
                         text = 'Этого режима быть не должно'
@@ -433,21 +433,14 @@ class Installer(QWidget):
         if column == 0:
             host.checked = not host.checked
         elif column == 1:
-            if host.state == Host.State.IDLE:
-                logger.message_appeared.emit('--- Установка %s' % host.hostname)
+            if host.state == Host.State.IDLE or host.state == Host.State.SUCCESS or host.state == Host.State.FAILURE:
+                logger.message_appeared.emit('--- Запуск %s' % host.hostname)
                 host.state = Host.State.QUEUED
                 self.worker_needed.emit()
+            elif host.state == Host.State.QUEUED:
+                host.state = Host.State.IDLE
             else:
-                if host.state == Host.State.QUEUED:
-                    host.state = Host.State.IDLE
-                else:
-                    if host.state == Host.State.SUCCESS or host.state == Host.State.FAILURE:
-                        logger.message_appeared.emit('--- Переустановка %s' % host.hostname)
-                        host.state = Host.State.QUEUED
-                        self.worker_needed.emit()
-                    else:
-                        logger.message_appeared.emit('--- Остановка %s' % host.hostname)
-                        host.state = Host.State.CANCELING
+                return
         self.table_changed.emit()
 
     def on_conf_selected(self):  # Выбрали мышкой конфигурацию
