@@ -431,7 +431,6 @@ class Installer(QWidget):
         column = index.column()
         host = self.table.model().data.hosts[index.row()]
         if column == 0:
-            print(host.hostname)
             host.checked = not host.checked
         elif column == 1:
             if host.state == Host.State.IDLE:
