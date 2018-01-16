@@ -248,7 +248,6 @@ class Installer(QWidget):
 
         self.version = open('version.txt').read() if os.path.exists('version.txt') else 'DEV'
 
-        self.messages = []
         self.console = PyQt5.QtWidgets.QTextBrowser()
 
         self.distribution = None
@@ -731,6 +730,7 @@ class Installer(QWidget):
 
     def worker(self):
         if not self.state == Installer.State.INSTALLING:
+            self.console.clear()
             self.distribution.installation_timer = 0
             self.state = Installer.State.INSTALLING
             self.state_changed.emit()
