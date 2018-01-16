@@ -385,24 +385,29 @@ class Installer(QWidget):
         elif self.state == Installer.State.PREPARED:
             self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
             self.button_browse.setEnabled(True)
+            self.button_start_stop.setText('➤ Старт')
             self.button_toggle_select.setDisabled(True)
             self.configurations_list.setEnabled(True)
             self.installation_path.setEnabled(True)
-            self.configurations_list.setModel(PyQt5.QtCore.QStringListModel(self.configurations))
-            self.configurations_list.selectionModel().currentChanged.connect(self.on_conf_selected)
-            self.post_install_scripts_combo.setDisabled(True)
-            self.button_start_stop.setDisabled(True)
 
-            self.configurations_list.setMinimumWidth(
-                self.configurations_list.sizeHintForColumn(0)
-                + 2 * self.configurations_list.frameWidth()
-            )
-
-            self.table.setDisabled(True)
-            self.window_title_changed.emit()
+            if self.configurations_list.model():  # Возвращение в состояние готовности после установки
+                self.button_start_stop.setEnabled(True)
+                self.post_install_scripts_combo.setEnabled(True)
+                self.table.setEnabled(True)
+            else:  # Первое открытие дистрибутива
+                self.configurations_list.setModel(PyQt5.QtCore.QStringListModel(self.configurations))
+                self.configurations_list.selectionModel().currentChanged.connect(self.on_conf_selected)
+                self.configurations_list.setMinimumWidth(
+                    self.configurations_list.sizeHintForColumn(0)
+                    + 2 * self.configurations_list.frameWidth()
+                )
+                self.button_start_stop.setDisabled(True)
+                self.post_install_scripts_combo.setDisabled(True)
+                self.table.setDisabled(True)
 
         # Выбран post-install
         elif self.state == Installer.State.POST_INSTALL_SELECTED:
+            print('-POST_INSTALL_SELECTED')
             combo_list = self.post_install_scripts_dict[
                 self.configurations[
                     self.configurations_list.currentIndex().row()]]
@@ -419,6 +424,7 @@ class Installer(QWidget):
             self.button_toggle_select.setEnabled(True)
 
         elif self.state == Installer.State.INSTALLING:
+            print('-INSTALLING')
             self.button_browse.setDisabled(True)
             self.configurations_list.setDisabled(True)
             self.installation_path.setDisabled(True)
@@ -426,6 +432,8 @@ class Installer(QWidget):
             self.button_start_stop.setEnabled(False)
             self.post_install_scripts_combo.setDisabled(True)
             self.table.setEnabled(True)
+
+        self.window_title_changed.emit()
 
     def on_clicked_table(self, index):
         column = index.column()
@@ -451,7 +459,6 @@ class Installer(QWidget):
         self.table_changed.emit()
 
     def on_conf_selected(self):  # Выбрали мышкой конфигурацию
-        self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
         self.button_browse.setEnabled(True)
         self.configurations_list.setEnabled(True)
 
@@ -744,6 +751,7 @@ class Installer(QWidget):
 
     def worker(self):
         if not self.state == Installer.State.INSTALLING:
+            self.distribution.installation_timer = 0
             self.state = Installer.State.INSTALLING
             self.state_changed.emit()
 
@@ -783,7 +791,7 @@ class Installer(QWidget):
         # Если хотя бы один QUEUED, то значит ещё не везде ещё скопирован base - выходим.
         for host in [host for host in self.table.model().data.hosts if host.checked]:
             if (host.state == Host.State.QUEUED or host.state == Host.State.BASE_INSTALLING_SOURCE
-                or host.state == Host.State.BASE_INSTALLING_DESTINATION):
+                    or host.state == Host.State.BASE_INSTALLING_DESTINATION):
                 return
         # Если нет ни одного QUEUED, значит все так или иначе прошли копирование base - поэтому ищем BASE_SUCCESS
         # и ставим копирование conf.
@@ -805,8 +813,6 @@ class Installer(QWidget):
                     threading.Thread(target=self.do_run_post_script).start()
                     return
 
-        # В зависимости от типа дистрибутива рассчитываем признак успеха установки (до проверки!)
-        # TODO: вынести это во вне чтобы выполнялось один раз
         success_state = Host.State.BASE_SUCCESS
         if self.is_distribution_with_conf and is_prepare_script_used:
             success_state = Host.State.POST_SUCCESS
@@ -814,15 +820,14 @@ class Installer(QWidget):
             success_state = Host.State.CONF_SUCCESS
 
         for host in [host for host in self.table.model().data.hosts if host.checked]:
-            if host.state != Host.State.SUCCESS:
+            if host.state != Host.State.FAILURE and host.state != Host.State.SUCCESS:
                 if host.state == success_state:
                     host.state = Host.State.SUCCESS
                 else:
                     return
 
-        self.state = Installer.State.POST_INSTALL_SELECTED
+        self.state = Installer.State.PREPARED
         self.state_changed.emit()
-        self.window_title_changed.emit()
 
     def prepare_distribution(self, uri):
         logger.message_appeared.emit('--- Выбрали ' + uri)
@@ -923,7 +928,6 @@ class Installer(QWidget):
         threading.Thread(target=get_path_size).start()
 
         self.state = Installer.State.PREPARED
-        self.state = Installer.State.PREPARED
         self.state_changed.emit()
 
         return
@@ -969,7 +973,7 @@ class Installer(QWidget):
 
         if self.state == Installer.State.INSTALLING:
             title += ' • Установка... ' + helpers.seconds_to_human(self.distribution.installation_timer)
-        elif self.state == Installer.State.POST_INSTALL_SELECTED:
+        elif self.state == Installer.State.PREPARED:
             if self.distribution.installation_timer > 0:
                 title += ' • Завершено ' + helpers.seconds_to_human(self.distribution.installation_timer)
 
