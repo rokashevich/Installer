@@ -123,6 +123,9 @@ class TableModel(QAbstractTableModel):
 
 
 class Installer(QWidget):
+    def closeEvent(self, event):
+        event.accept()
+
     class State(Enum):
         QUEUED = auto()  # переходное состояние
         DEFAULT = auto()  # по умолчанию: всё disabled, кроме button_browse
