@@ -134,7 +134,6 @@ class Installer(QWidget):
         PREPARING = auto()  # скачивание/распаковка дистрибутива: всё disabled, кроме browse>stop
         PREPARED = auto()  # дистрибутив распакован: stop>browse, конфигурации, остальное заблокировано
         CONF_SELECTED = auto()  # выбрана конфигурация: всё разблокировано
-        POST_INSTALL_SELECTED = auto()  # выбран скрипт post-install, если есть
         INSTALLING = auto()  # установка: start>stop, остальное заблокировано
 
     class Distribution:
@@ -190,12 +189,12 @@ class Installer(QWidget):
                                                                       helpers.seconds_to_human(host.md5_timer))
 
                 conf_stat = ''
-                if host.conf_counter_total >= 0:
+                if host.conf_counter_total > 0:
                     if host.conf_counter_overwrite > 0:
-                        conf_stat = ' (всего %d, перезаписано %d)' % (host.conf_counter_total,
+                        conf_stat = ', conf (всего %d, перезаписано %d)' % (host.conf_counter_total,
                                                                       host.conf_counter_overwrite)
                     else:
-                        conf_stat = ' (всего %d)' % host.conf_counter_total
+                        conf_stat = ', conf (всего %d)' % host.conf_counter_total
 
                 if host.checked:
                     pen_color = '#000'
@@ -206,7 +205,7 @@ class Installer(QWidget):
                         text = 'Установлен base%s' % base_time
                         background_color = '#c5f31f'
                     elif host.state == Host.State.CONF_SUCCESS:
-                        text = 'Установлен base%s, conf%s' % (base_time, conf_stat)
+                        text = 'Установлен base%s%s' % (base_time, conf_stat)
                         background_color = '#94ed17'
                     elif host.state == Host.State.POST_SUCCESS:
                         text = 'Установлен base%s, conf%s; выполнен post-скрипт' % (base_time, conf_stat)
@@ -251,6 +250,8 @@ class Installer(QWidget):
 
         self.console = PyQt5.QtWidgets.QTextBrowser()
 
+        self.post_install_scripts_dict = {}
+
         self.distribution = None
         self.stop = False
         self.pids = set()
@@ -269,20 +270,15 @@ class Installer(QWidget):
         self.configurations = []
         self.table_data_dict = {}
 
-        self.post_install_scripts_dict = {}
-
         self.prepare_message = ''
         self.prepare_process_download = None
         self.prepare_process_unzip = None
-        self.is_distribution_with_conf = False
 
         self.copy_conf_in_progress = False
 
         self.button_browse = QPushButton()
         self.configurations_list = PyQt5.QtWidgets.QListView()
         self.installation_path = QLineEdit()
-        self.post_install_scripts_combo = PyQt5.QtWidgets.QComboBox()
-        self.post_install_scripts_combo.addItem("")
 
         self.button_start = QPushButton('➤ Старт')
         self.button_console = QPushButton('📜 Лог')
@@ -303,7 +299,6 @@ class Installer(QWidget):
 
         gl.addWidget(self.configurations_list,       1, 0, 1, 3)  #
         gl.addWidget(self.installation_path,         2, 0, 1, 3)  # Элементы друг над другом
-        gl.addWidget(self.post_install_scripts_combo, 3, 0, 1, 3)  #
 
         gl.addWidget(self.stacked,                   0, 3, -1, 1)  # Контейнер: консоль или лог
 
@@ -324,8 +319,8 @@ class Installer(QWidget):
         self.state_changed.connect(self.on_state_changed)
         self.table_changed.connect(self.on_table_changed)
         self.worker_needed.connect(self.worker)
-        self.post_install_scripts_combo.activated.connect(self.on_post_install_scripts_combo_changed)
         self.window_title_changed.connect(self.on_title_changed)
+        self.installation_path.textChanged.connect(self.on_installation_path_changed)
         logger.message_appeared.connect(self.on_message_appeared)
 
         self.state = Installer.State.DEFAULT
@@ -366,7 +361,6 @@ class Installer(QWidget):
             self.button_start.setDisabled(True)
             self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
             self.button_browse.setEnabled(True)
-            self.post_install_scripts_combo.setDisabled(True)
             self.table.setDisabled(True)
 
         elif self.state == Installer.State.PREPARING:
@@ -375,7 +369,6 @@ class Installer(QWidget):
             self.button_start.setDisabled(True)
             self.button_browse.setText('❌ Отменить')
             self.button_browse.setEnabled(True)
-            self.post_install_scripts_combo.setDisabled(True)
             self.table.setDisabled(True)
 
         # Распакован архив
@@ -386,11 +379,7 @@ class Installer(QWidget):
             self.configurations_list.setEnabled(True)
             self.installation_path.setEnabled(True)
 
-            if self.configurations_list.model():  # Возвращение в состояние готовности после установки
-                self.button_start.setEnabled(True)
-                self.post_install_scripts_combo.setEnabled(True)
-                self.table.setEnabled(True)
-            else:  # Первое открытие дистрибутива
+            if not self.configurations_list.model():  # Первое открытие дистрибутива
                 self.configurations_list.setModel(PyQt5.QtCore.QStringListModel(self.configurations))
                 self.configurations_list.selectionModel().currentChanged.connect(self.on_conf_selected)
                 self.configurations_list.setMinimumWidth(
@@ -398,22 +387,6 @@ class Installer(QWidget):
                     + 2 * self.configurations_list.frameWidth()
                 )
                 self.button_start.setDisabled(True)
-                self.post_install_scripts_combo.setDisabled(True)
-                self.table.setDisabled(True)
-
-        # Выбран post-install
-        elif self.state == Installer.State.POST_INSTALL_SELECTED:
-            combo_list = self.post_install_scripts_dict[
-                self.configurations[
-                    self.configurations_list.currentIndex().row()]]
-            if not combo_list:
-                self.post_install_scripts_combo.setEnabled(False)
-            elif len(combo_list) == 1:
-                self.post_install_scripts_combo.setEnabled(True)
-            else:
-                self.post_install_scripts_combo.setEnabled(True)
-            self.button_start.setEnabled(True)
-
             self.table.setEnabled(True)
 
         elif self.state == Installer.State.INSTALLING:
@@ -421,7 +394,6 @@ class Installer(QWidget):
             self.configurations_list.setDisabled(True)
             self.installation_path.setDisabled(True)
             self.button_start.setText('❌ Стоп')
-            self.post_install_scripts_combo.setDisabled(True)
             self.table.setEnabled(True)
 
         self.window_title_changed.emit()
@@ -446,15 +418,8 @@ class Installer(QWidget):
         self.table_changed.emit()
 
     def on_conf_selected(self):  # Выбрали мышкой конфигурацию
-        self.button_browse.setEnabled(True)
-        self.configurations_list.setEnabled(True)
-
         # Ключ доступа к выбранной конфигурации
         key = self.configurations[self.configurations_list.currentIndex().row()]
-
-        # Отображение combo box
-        self.post_install_scripts_combo.setModel(PyQt5.QtCore.QStringListModel(self.post_install_scripts_dict[key]))
-        self.on_post_install_scripts_combo_changed(0)
 
         if key == 'Выбрать все':
             for host in self.table.model().data.hosts:
@@ -492,38 +457,11 @@ class Installer(QWidget):
                 self.table.model().data.add_host(host, checked=False)
         self.table_changed.emit()
 
-    def on_post_install_scripts_combo_changed(self, index):  # Выбрали мышкой post-install скрипт
-        # Возможные варианты list:
-        # Вариант 1:
-        # 0 - Pre-скрипты отсутствуют
-        # Вариант 2:
-        # 0 - post-single-script.bat
-        # 1 - Не выполнять post-скрипт
-        # Вариант 3:
-        # 0 - Выбрать post-скрипт
-        # 1 - post-script-1.bat
-        # 2 - post-script-2.bat
-        # N - post-script-N.bat
-        # Последний - Не выполнять post-скрипт
-        #
-        list = self.post_install_scripts_combo.model().stringList()
-        # Активируем/деактивируем сам комбобокс
-        if len(list) > 1:
-            self.post_install_scripts_combo.setEnabled(True)
-        else:
-            self.post_install_scripts_combo.setDisabled(True)
-        # Активируем/деактивируем кнопку СТАРТ
-        if (len(list) == 1  # Вариант 1
-            or (len(list) == 2)  # Вариант 2
-                or (len(list) > 3) and index != 0):
+    def on_installation_path_changed(self):
+        if self.installation_path.text() != '':
             self.button_start.setEnabled(True)
-            self.table.setEnabled(True)
         else:
-            self.button_start.setEnabled(False)
-            self.table.setEnabled(False)
-
-        self.state = Installer.State.POST_INSTALL_SELECTED
-        self.window_title_changed.emit()
+            self.button_start.setDisabled(True)
 
     def on_clicked_button_browse(self):
         if not self.state == Installer.State.PREPARING:
@@ -560,7 +498,6 @@ class Installer(QWidget):
         self.button_start.setDisabled(True)
         self.configurations_list.setDisabled(True)
         self.installation_path.setDisabled(True)
-        self.post_install_scripts_combo.setDisabled(True)
 
         threading.Thread(target=self.do_stop_end).start()
 
@@ -585,7 +522,6 @@ class Installer(QWidget):
         self.button_start.setEnabled(True)
         self.configurations_list.setEnabled(True)
         self.installation_path.setEnabled(True)
-        self.post_install_scripts_combo.setEnabled(True)
 
     def do_start_spider(self):
         for host in [host for host in self.table.model().data.hosts if host.checked]:
@@ -645,7 +581,7 @@ class Installer(QWidget):
                  self.installation_path.text().strip(),
                  self.installation_path.text().strip(),
                  self.installation_path.text().strip())
-        r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        r = subprocess.Popen(cmd, shell=True)
         self.pids.add(r.pid)
         r.wait()
         if self.stop:
@@ -761,7 +697,7 @@ class Installer(QWidget):
         self.worker_needed.emit()
 
     def do_run_post_script(self):
-        s = os.path.join(self.installation_path.text(), 'etc', self.post_install_scripts_combo.currentText())
+        s = os.path.join(self.installation_path.text(), 'etc', 'post-install.bat')
         for host in [host for host in self.table.model().data.hosts if host.checked]:
             if host.state == Host.State.CONF_SUCCESS:
                 cmd = r'psexec \\' + host.hostname + ' -u ' + Globals.samba_login + ' -p ' + Globals.samba_password \
@@ -816,23 +752,25 @@ class Installer(QWidget):
 
         # Копирование conf
 
-        # Если хотя бы один QUEUED, то значит ещё не везде ещё скопирован base - выходим.
-        for host in [host for host in self.table.model().data.hosts if host.checked]:
-            if (host.state == Host.State.QUEUED or host.state == Host.State.BASE_INSTALLING_SOURCE
-                    or host.state == Host.State.BASE_INSTALLING_DESTINATION):
-                return
-        # Если нет ни одного QUEUED, значит все так или иначе прошли копирование base - поэтому ищем BASE_SUCCESS
-        # и ставим копирование conf.
-        for host in [host for host in self.table.model().data.hosts if host.checked]:
-            if host.state == Host.State.BASE_SUCCESS:
-                threading.Thread(target=self.do_copy_conf).start()
-                return
+        if (self.configurations_list.currentIndex().row() >= 0
+                and self.configurations_list.currentIndex().row() < self.configurations_list.model().rowCount() - 2):
+
+            # Если хотя бы один QUEUED, то значит ещё не везде ещё скопирован base - выходим.
+            for host in [host for host in self.table.model().data.hosts if host.checked]:
+                if (host.state == Host.State.QUEUED or host.state == Host.State.BASE_INSTALLING_SOURCE
+                        or host.state == Host.State.BASE_INSTALLING_DESTINATION):
+                    return
+            # Если нет ни одного QUEUED, значит все так или иначе прошли копирование base - поэтому ищем BASE_SUCCESS
+            # и ставим копирование conf.
+            for host in [host for host in self.table.model().data.hosts if host.checked]:
+                if host.state == Host.State.BASE_SUCCESS:
+                    threading.Thread(target=self.do_copy_conf).start()
+                    return
 
         # Выполнение post-скриптов
         s = os.path.join(self.distribution.configurations_dir,
                          self.configurations[self.configurations_list.currentIndex().row()],
-                         'common', 'etc',
-                         self.post_install_scripts_combo.currentText())
+                         'common', 'etc', 'post-install.bat')
         is_prepare_script_used = False
         if os.path.exists(s):
             is_prepare_script_used = True
@@ -842,9 +780,10 @@ class Installer(QWidget):
                     return
 
         success_state = Host.State.BASE_SUCCESS
-        if self.is_distribution_with_conf and is_prepare_script_used:
+        if is_prepare_script_used:
             success_state = Host.State.POST_SUCCESS
-        elif self.is_distribution_with_conf and not is_prepare_script_used:
+        elif (self.configurations_list.currentIndex().row() >= 0
+                and self.configurations_list.currentIndex().row() < self.configurations_list.model().rowCount() - 2):
             success_state = Host.State.CONF_SUCCESS
 
         for host in [host for host in self.table.model().data.hosts if host.checked]:
@@ -889,17 +828,21 @@ class Installer(QWidget):
             base_txt = uri
         else:  # выбрали файл-архив
             unpack_to = self.unpack_distribution(uri)
-            base_txt = os.path.join(unpack_to, 'base', 'base.txt')
-            if not os.path.isfile(base_txt):
+            base_txt_1 = os.path.join(unpack_to, 'base', 'base.txt')
+            base_txt_2 = os.path.join(unpack_to, 'base.txt')
+            if os.path.isfile(base_txt_1):
+                base_txt = base_txt_1
+            elif os.path.isfile(base_txt_2):
+                base_txt = base_txt_2
+            else:
                 self.state = Installer.State.DEFAULT
-                logger.message_appeared.emit('*** Ошибка открытия: %s' % uri)
+                logger.message_appeared.emit('*** После распаковки не найден base.txt')
                 self.state_changed.emit()
                 return
 
         conf = os.path.join(os.path.dirname(base_txt), '..', 'conf')
 
         if os.path.isdir(conf):
-            self.is_distribution_with_conf = True
             for name in os.listdir(conf):
                 destination = ''
                 settings_txt = os.path.join(conf, name, 'settings.txt')
@@ -913,20 +856,6 @@ class Installer(QWidget):
                     table_data.add_host(hostname)
                 self.configurations.append(name)
                 self.table_data_dict[name] = table_data
-
-                # Ищем и запоминаем наличие post-install*.bat
-                g = glob.glob(os.path.join(conf, name, 'common', 'etc', 'post*.bat'))
-                g = list(map(lambda i: os.path.basename(i), g))
-                if not g:  # нет post-install скрипта
-                    self.post_install_scripts_dict[name] = ['Отсутствет post-скрипт']
-                elif len(g) == 1:  # один post-install скрипт
-                    self.post_install_scripts_dict[name] = g + ["Не выполнять post-скрипт"]
-                else:  # больше одного скрипта
-                    self.post_install_scripts_dict[name] = ["Выбрать post-скрипт"] + g \
-                                                          + ["Не выполнять post-скрипт"]
-        else:
-            self.is_distribution_with_conf = False
-
 
         self.configurations.sort()
         self.configurations_changed.emit()
