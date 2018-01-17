@@ -75,6 +75,7 @@ class TableData:
             self.conf_state = Host.State.IDLE
             self.post_state = Host.State.IDLE
             self.state = Host.State.IDLE
+            self.pids = []
 
     def __init__(self, source, destination=''):
         self.source = source
@@ -124,6 +125,7 @@ class TableModel(QAbstractTableModel):
 
 class Installer(QWidget):
     def closeEvent(self, event):
+        self.do_stop_begin()
         event.accept()
 
     class State(Enum):
@@ -251,6 +253,7 @@ class Installer(QWidget):
 
         self.distribution = None
         self.stop = False
+        self.pids = set()
 
         self.table = QTableView()
         self.table.setModel(TableModel())
@@ -315,7 +318,7 @@ class Installer(QWidget):
         self.show()
 
         self.button_browse.clicked.connect(self.on_clicked_button_browse)
-        self.button_start.clicked.connect(self.do_start_spider)
+        self.button_start.clicked.connect(self.on_clicked_button_start)
         self.button_console.clicked.connect(self.on_clicked_button_console)
         self.table.clicked.connect(self.on_clicked_table)
         self.state_changed.connect(self.on_state_changed)
@@ -417,13 +420,16 @@ class Installer(QWidget):
             self.button_browse.setDisabled(True)
             self.configurations_list.setDisabled(True)
             self.installation_path.setDisabled(True)
-            self.button_start.setDisabled(True)
+            self.button_start.setText('❌ Стоп')
             self.post_install_scripts_combo.setDisabled(True)
             self.table.setEnabled(True)
 
         self.window_title_changed.emit()
 
     def on_clicked_table(self, index):
+        if self.stop:  # Если находимся в режиме останова то игнорируем клики в таблице
+            return
+
         column = index.column()
         host = self.table.model().data.hosts[index.row()]
         if column == 0:
@@ -540,6 +546,47 @@ class Installer(QWidget):
         else:
             threading.Thread(target=self.prepare_distribution_stop).start()
 
+    def on_clicked_button_start(self):
+        if not self.state == Installer.State.INSTALLING:
+            logger.message_appeared.emit('--- СТАРТ')
+            self.do_start_spider()
+        else:
+            logger.message_appeared.emit('--- СТОП')
+            self.do_stop_begin()
+
+    def do_stop_begin(self):
+        self.stop = True
+        self.button_browse.setDisabled(True)
+        self.button_start.setDisabled(True)
+        self.configurations_list.setDisabled(True)
+        self.installation_path.setDisabled(True)
+        self.post_install_scripts_combo.setDisabled(True)
+
+        threading.Thread(target=self.do_stop_end).start()
+
+    def do_stop_end(self):
+        cmd = r'taskkill /t /f'
+        for pid in self.pids:
+            cmd += r' /pid ' + str(pid)
+        self.pids.clear()
+        if cmd != r'taskkill /t /f':
+            print('kill='+cmd)
+            subprocess.run(cmd, shell=True)
+
+        for host in self.table.model().data.hosts:
+            host.state = Host.State.IDLE
+        self.table_changed.emit()
+
+        self.state = Installer.State.PREPARED
+        self.state_changed.emit()
+
+        self.stop = False
+        self.button_browse.setEnabled(True)
+        self.button_start.setEnabled(True)
+        self.configurations_list.setEnabled(True)
+        self.installation_path.setEnabled(True)
+        self.post_install_scripts_combo.setEnabled(True)
+
     def do_start_spider(self):
         for host in [host for host in self.table.model().data.hosts if host.checked]:
             if (host.state == Host.State.IDLE
@@ -556,6 +603,12 @@ class Installer(QWidget):
             self.button_console.setText('📜 Лог')
             self.stacked.setCurrentIndex(0)
 
+    def remove_pid(self, pid):
+        try:
+            self.pids.remove(pid)
+        except:
+            pass
+
     def do_copy_base(self, source_host, destination_host):
         def timer():
             while destination_host.state == Host.State.BASE_INSTALLING_DESTINATION:
@@ -568,32 +621,61 @@ class Installer(QWidget):
                 else:
                     destination_host.base_timer += 1
 
-        def copy_from_to(h1, p1, h2, p2):
-            cmd = r'taskkill /s %s /u %s /p %s /t /f /im ' % (h2, Globals.samba_login, Globals.samba_password) \
-                  + ' /im '.join(self.distribution.executables)
-            subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        threading.Thread(target=timer).start()
 
-            # Возвращаем пустую строку ('') в случае успеха,
-            # и строку с, по возможнсоти, содержательным сообщением об ошибке в противном случае.
-            cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s cmd /c ' \
-                  r'"if exist %s ( del /f/s/q %s > nul & rd /s/q %s )"' \
-                  % (h2, Globals.samba_login, Globals.samba_password, p2, p2, p2)
-            r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if r.returncode != 0:
-                return 'cmd=%s ret=%d stdout=%s stderr=%s' % (cmd, r.returncode, r.stdout, r.stderr)
+        source_hostname = source_host.hostname if source_host else None
+        source_path = self.installation_path.text() if source_host else self.distribution.base
 
-            # https://ss64.com/nt/robocopy.html
-            robocopy_options = [r'/e', r'/mt:32', r'/r:0', r'/w:0']
-            robocopy_options += [r'/np', r'/nfl', r'/njh', r'/njs', r'/ndl', r'/nc', r'/ns']  # silent
-            if h1:
-                cmd = ['PsExec.exe', '-accepteula', '-nobanner', '\\\\' + h1,
-                       '-u', Globals.samba_login, '-p', Globals.samba_password,
-                       'robocopy', p1, r'\\%s\%s' % (h2, p2.replace(':', '$'))] + robocopy_options
-            else:
-                cmd = ['robocopy'] + [p1, '\\\\' + h2 + '\\' + p2.replace(':', '$')] + robocopy_options
-            r = subprocess.Popen(cmd, shell=True)
-            returncode = r.wait()
+        # БЛОКИРУЮЩИЙ ПРОЦЕСС 1 - "Отстрел" найденных экзешников
 
+        cmd = r'taskkill /s %s /u %s /p %s /t /f /im ' % (destination_host.hostname, Globals.samba_login, Globals.samba_password) \
+              + ' /im '.join(self.distribution.executables)
+        r = subprocess.Popen(cmd, shell=True)
+        self.pids.add(r.pid)
+        r.wait()
+        if self.stop:
+            return 'Принудительная остановка'
+        self.remove_pid(r.pid)
+
+        # БЛОКИРУЮЩИЙ ПРОЦЕСС 2 - Очистка удалённой директории
+
+        cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s cmd /c ' \
+              r'"if exist %s ( del /f/s/q %s > nul & rd /s/q %s )"' \
+              % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
+                 self.installation_path.text().strip(),
+                 self.installation_path.text().strip(),
+                 self.installation_path.text().strip())
+        r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.pids.add(r.pid)
+        r.wait()
+        if self.stop:
+            return 'Принудительная остановка'
+        self.remove_pid(r.pid)
+        if r.returncode != 0:
+            return 'cmd=%s ret=%d stdout=%s stderr=%s' % (cmd, r.returncode, r.stdout, r.stderr)
+
+        # БЛОКИРУЮЩИЙ ПРОЦЕСС 3 - Фактическое копирование файлов
+
+        # https://ss64.com/nt/robocopy.html
+        robocopy_options = [r'/e', r'/mt:32', r'/r:0', r'/w:0']
+        robocopy_options += [r'/np', r'/nfl', r'/njh', r'/njs', r'/ndl', r'/nc', r'/ns']  # silent
+        if source_hostname:
+            cmd = ['PsExec.exe', '-accepteula', '-nobanner', '\\\\' + source_hostname,
+                   '-u', Globals.samba_login, '-p', Globals.samba_password,
+                   'robocopy', source_path, r'\\%s\%s' % (destination_host.hostname,
+                                                          self.installation_path.text().strip().replace(':', '$'))] \
+                  + robocopy_options
+        else:
+            cmd = ['robocopy'] + [source_path, '\\\\' + destination_host.hostname + '\\'
+                                  + self.installation_path.text().strip().replace(':', '$')] + robocopy_options
+        r = subprocess.Popen(cmd, shell=True)
+        self.pids.add(r.pid)
+        r.wait()
+        if self.stop:
+            return 'Принудительная остановка'
+        self.remove_pid(r.pid)
+
+        if r.returncode != 1:
             # https://ss64.com/nt/robocopy-exit.html
             # 16 ***FATAL ERROR***
             # 15 FAIL MISM XTRA COPY
@@ -612,24 +694,23 @@ class Installer(QWidget):
             #  2 XTRA OK
             #  1 COPY OK
             #  0 --no change--
-            if returncode != 1:
-                return 'cmd=%s returncode=%d' % (' '.join(cmd), r.returncode)
-            return ''
-
-        threading.Thread(target=timer).start()
-        source_hostname = source_host.hostname if source_host else None
-        source_path = self.installation_path.text() if source_host else self.distribution.base
-        r = copy_from_to(source_hostname, source_path, destination_host.hostname, self.installation_path.text().strip())
-        if r:
-            logger.message_appeared.emit('*** %s: ошибка копирования base: %s' % (destination_host.hostname, r))
+            logger.message_appeared.emit('*** %s: ошибка копирования base: cmd=%s returncode=%d'
+                                         % (destination_host.hostname, ' '.join(cmd), r.returncode))
             destination_host.state = destination_host.base_state = Host.State.FAILURE
         else:
-            # Проверяем base.txt
+
+            # БЛОКИРУЮЩИЙ ПРОЦЕСС 4 - Проверяем base.txt
+
             cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -v verify-base.exe' \
                   % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
                      self.installation_path.text().strip())
             destination_host.md5_timer = 0
-            r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.pids.add(r.pid)
+            r.wait()
+            if self.stop:
+                return 'Принудительная остановка'
+            self.remove_pid(r.pid)
             if r.returncode != 0:
                 destination_host.state = destination_host.base_state = Host.State.FAILURE
                 logger.message_appeared.emit(
