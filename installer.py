@@ -75,7 +75,6 @@ class TableData:
             self.conf_state = Host.State.IDLE
             self.post_state = Host.State.IDLE
             self.state = Host.State.IDLE
-            self.pids = []
 
     def __init__(self, source, destination=''):
         self.source = source
@@ -507,7 +506,6 @@ class Installer(QWidget):
             cmd += r' /pid ' + str(pid)
         self.pids.clear()
         if cmd != r'taskkill /t /f':
-            print('kill='+cmd)
             subprocess.run(cmd, shell=True)
 
         for host in self.table.model().data.hosts:
@@ -564,8 +562,10 @@ class Installer(QWidget):
 
         # БЛОКИРУЮЩИЙ ПРОЦЕСС 1 - "Отстрел" найденных экзешников
 
-        cmd = r'taskkill /s %s /u %s /p %s /t /f /im ' % (destination_host.hostname, Globals.samba_login, Globals.samba_password) \
-              + ' /im '.join(self.distribution.executables)
+        cmd = r'taskkill /s %s /u %s /p %s /t /f /im "' % (destination_host.hostname, Globals.samba_login, Globals.samba_password) \
+              + '" /im "'.join(self.distribution.executables)
+        cmd += '"'
+        logger.message_appeared.emit('--- ' + cmd)
         r = subprocess.Popen(cmd, shell=True)
         self.pids.add(r.pid)
         r.wait()
@@ -643,14 +643,14 @@ class Installer(QWidget):
             destination_host.md5_timer = 0
             r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             self.pids.add(r.pid)
-            r.wait()
+            out, err = r.communicate()
             if self.stop:
                 return 'Принудительная остановка'
             self.remove_pid(r.pid)
             if r.returncode != 0:
                 destination_host.state = destination_host.base_state = Host.State.FAILURE
                 logger.message_appeared.emit(
-                    'cmd=%s ret=%d stdout=%s stderr=%s' % (cmd, r.returncode, r.stdout, r.stderr))
+                    'cmd=%s out=%s' % (cmd, out))
             else:
                 destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
 
