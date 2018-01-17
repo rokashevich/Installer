@@ -562,16 +562,18 @@ class Installer(QWidget):
 
         # БЛОКИРУЮЩИЙ ПРОЦЕСС 1 - "Отстрел" найденных экзешников
 
-        cmd = r'taskkill /s %s /u %s /p %s /t /f /im "' % (destination_host.hostname, Globals.samba_login, Globals.samba_password) \
-              + '" /im "'.join(self.distribution.executables)
-        cmd += '"'
-        logger.message_appeared.emit('--- ' + cmd)
-        r = subprocess.Popen(cmd, shell=True)
-        self.pids.add(r.pid)
-        r.wait()
-        if self.stop:
-            return 'Принудительная остановка'
-        self.remove_pid(r.pid)
+        if self.distribution.executables:
+            cmd = r'taskkill /s %s /u %s /p %s /t /f /im "' \
+                  % (destination_host.hostname, Globals.samba_login, Globals.samba_password) \
+                  + '" /im "'.join(self.distribution.executables)
+            cmd += '"'
+            logger.message_appeared.emit('--- ' + cmd)
+            r = subprocess.Popen(cmd, shell=True)
+            self.pids.add(r.pid)
+            r.wait()
+            if self.stop:
+                return 'Принудительная остановка'
+            self.remove_pid(r.pid)
 
         # БЛОКИРУЮЩИЙ ПРОЦЕСС 2 - Очистка удалённой директории
 
@@ -744,6 +746,8 @@ class Installer(QWidget):
                 if destination_host.state == destination_host.state.QUEUED:
                     destination_host.state = Host.State.BASE_INSTALLING_DESTINATION
                     logger.message_appeared.emit('--- Копирование base: localhost -> %s' % destination_host.hostname)
+                    destination_host.base_timer = -1
+                    destination_host.md5_timer = -1
                     threading.Thread(target=self.do_copy_base, args=(None, destination_host)).start()
                     any_base_copy_started = True
                     break
@@ -794,6 +798,7 @@ class Installer(QWidget):
                     return
 
         self.state = Installer.State.PREPARED
+        self.table_changed.emit()
         self.state_changed.emit()
 
     def prepare_distribution(self, uri):
