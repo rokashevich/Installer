@@ -648,11 +648,10 @@ class Installer(QWidget):
                 self.pids.add(r.pid)
                 if self.stop:
                     return 'Принудительная остановка'
-                output = (r.communicate()[0]).decode()
+                self.remove_pid(r.pid)
+                output = [file for file in ((r.communicate()[0]).decode().strip()).strip().split('\n')]
                 print(r.returncode)
                 print(output)
-                self.remove_pid(r.pid)
-                output = list(filter(None, [file for file in output.strip().split('\n')]))
                 if r.returncode == 31337:
                     return 0, []
                 else:
