@@ -73,7 +73,8 @@ func main() {
 		fmt.Println(error_message)
 		os.Exit(1)
 	} else {
-		os.Exit(0)
+		// Код успеха отличнен от нуля!
+		os.Exit(31337)
 	}
 
 }
