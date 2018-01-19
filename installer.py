@@ -212,7 +212,7 @@ class Installer(QWidget):
                     elif host.state == Host.State.SUCCESS:
                         text = 'Установлен base%s' % base_time
                         if host.conf_state == Host.State.CONF_SUCCESS:
-                            text += '; conf%s' % conf_stat
+                            text += '%s' % conf_stat
                         if host.post_state == Host.State.POST_SUCCESS:
                             text += '; post-скрипт выполнен'
                         text += ' - УСПЕХ'
@@ -639,23 +639,58 @@ class Installer(QWidget):
 
             # БЛОКИРУЮЩИЙ ПРОЦЕСС 4 - Проверяем base.txt
 
-            cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -v verify-base.exe' \
-                  % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
-                     self.installation_path.text().strip())
-            destination_host.md5_timer = 0
-            r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            self.pids.add(r.pid)
-            out, err = r.communicate()
-            if self.stop:
-                return 'Принудительная остановка'
-            self.remove_pid(r.pid)
-            if r.returncode != 0:
-                destination_host.state = destination_host.base_state = Host.State.FAILURE
-                logger.message_appeared.emit(
-                    'cmd=%s out=%s' % (cmd, out))
-            else:
-                destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
+            def verify():
+                cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -v verify-base.exe' \
+                      % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
+                         self.installation_path.text().strip())
+                destination_host.md5_timer = 0
+                r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                self.pids.add(r.pid)
+                if self.stop:
+                    return 'Принудительная остановка'
+                output = (r.communicate()[0]).decode()
+                print(r.returncode)
+                print(output)
+                self.remove_pid(r.pid)
+                output = list(filter(None, [file for file in output.strip().split('\n')]))
+                if r.returncode == 31337:
+                    return 0, []
+                else:
+                    return 1, output
 
+            error, files_with_mismatched_md5 = verify()
+            if not error:
+                destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
+            else:
+                if not files_with_mismatched_md5:
+                    logger.message_appeared.emit('*** %s: код возврата base-verify' % destination_host.hostname)
+                    destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
+                else:
+                    logger.message_appeared.emit('!!! %s: ошибка md5, повторное копирование: %s'
+                                                 % (destination_host.hostname, ' '.join(files_with_mismatched_md5)))
+                    for file in files_with_mismatched_md5:
+                        print('!'+file+'?')
+                        try:
+                            src = os.path.join(self.distribution.base, file)
+                            dst = os.path.join(
+                                                '\\\\' + destination_host.hostname + '\\'
+                                                + self.installation_path.text().replace(':', '$'), file)
+                            shutil.copyfile(src, dst)
+                        except:
+                            logger.message_appeared.emit('*** %s: повторное копирование' % destination_host.hostname)
+                            pass
+
+                    error, files_with_mismatched_md5 = verify()
+                    if not error:
+                        destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
+                    else:
+                        if not files_with_mismatched_md5:
+                            logger.message_appeared.emit('*** %s: код возврата base-verify' % destination_host.hostname)
+                        else:
+                            destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
+                            logger.message_appeared.emit('*** %s: файлы не прошли проверку: %s'
+                                                         % (destination_host.hostname, ' '.join(files_with_mismatched_md5)))
+                            destination_host.state = destination_host.base_state = Host.State.FAILURE
         if source_host:
             source_host.state = Host.State.BASE_SUCCESS
         self.worker_needed.emit()
@@ -794,11 +829,11 @@ class Installer(QWidget):
             if host.state != Host.State.FAILURE and host.state != Host.State.SUCCESS and host.state != Host.State.IDLE:
                 if host.state == success_state:
                     host.state = Host.State.SUCCESS
+                    self.table_changed.emit()
                 else:
                     return
 
         self.state = Installer.State.PREPARED
-        self.table_changed.emit()
         self.state_changed.emit()
 
     def prepare_distribution(self, uri):
