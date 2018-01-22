@@ -281,6 +281,7 @@ class Installer(QWidget):
 
         self.button_start = QPushButton('➤ Старт')
         self.button_console = QPushButton('📜 Лог')
+        self.button_check = QPushButton('☑')  # ☐ - uncheck
 
         self.stacked = PyQt5.QtWidgets.QStackedWidget()
         self.stacked.addWidget(self.table)
@@ -293,13 +294,14 @@ class Installer(QWidget):
         # https://doc.qt.io/qt-5/qgridlayout.html#addWidget-2
 
         gl.addWidget(self.button_browse,             0, 0, 1, 1)  #
-        gl.addWidget(self.button_start,         0, 1, 1, 1)  # Верхний ряд кнопок
+        gl.addWidget(self.button_start,              0, 1, 1, 1)  # Верхний ряд кнопок
         gl.addWidget(self.button_console,            0, 2, 1, 1)  #
+        gl.addWidget(self.button_check,              0, 3, 1, 1)  #
 
-        gl.addWidget(self.configurations_list,       1, 0, 1, 3)  #
-        gl.addWidget(self.installation_path,         2, 0, 1, 3)  # Элементы друг над другом
+        gl.addWidget(self.configurations_list,       1, 0, 1, 4)  #
+        gl.addWidget(self.installation_path,         2, 0, 1, 4)  # Элементы друг над другом
 
-        gl.addWidget(self.stacked,                   0, 3, -1, 1)  # Контейнер: консоль или лог
+        gl.addWidget(self.stacked,                   0, 4, -1, 1)  # Контейнер: консоль или лог
 
         self.setLayout(gl)
 
@@ -314,6 +316,7 @@ class Installer(QWidget):
         self.button_browse.clicked.connect(self.on_clicked_button_browse)
         self.button_start.clicked.connect(self.on_clicked_button_start)
         self.button_console.clicked.connect(self.on_clicked_button_console)
+        self.button_check.clicked.connect(self.on_clicked_button_check)
         self.table.clicked.connect(self.on_clicked_table)
         self.state_changed.connect(self.on_state_changed)
         self.table_changed.connect(self.on_table_changed)
@@ -420,19 +423,12 @@ class Installer(QWidget):
         # Ключ доступа к выбранной конфигурации
         key = self.configurations[self.configurations_list.currentIndex().row()]
 
-        if key == 'Выбрать все':
-            for host in self.table.model().data.hosts:
-                host.checked = True
-        elif key == 'Снять выбор':
-            for host in self.table.model().data.hosts:
-                host.checked = False
-        else:
-            # Выставляем установочный путь из settings.txt
-            self.installation_path.setEnabled(True)
-            self.installation_path.setText(self.table_data_dict[key].destination)
+        # Выставляем установочный путь из settings.txt
+        self.installation_path.setEnabled(True)
+        self.installation_path.setText(self.table_data_dict[key].destination)
 
-            # Выставляем новые данные в правой панели
-            self.merge_hosts_from_configuration(key)
+        # Выставляем новые данные в правой панели
+        self.merge_hosts_from_configuration(key)
 
         self.table_changed.emit()
 
@@ -536,6 +532,13 @@ class Installer(QWidget):
         else:
             self.button_console.setText('📜 Лог')
             self.stacked.setCurrentIndex(0)
+
+    def on_clicked_button_check(self):
+        if self.button_check.text() == '☐':
+            self.button_check.setText('☑')
+        else:
+            self.button_check.setText('☐')
+
 
     def remove_pid(self, pid):
         try:
@@ -650,46 +653,35 @@ class Installer(QWidget):
                     return 'Принудительная остановка'
                 self.remove_pid(r.pid)
                 output = [file for file in ((r.communicate()[0]).decode().strip()).strip().split('\n')]
-                print(r.returncode)
-                print(output)
-                if r.returncode == 31337:
-                    return 0, []
-                else:
-                    return 1, output
+                if r.returncode:
+                    return output
+                return []
 
-            error, files_with_mismatched_md5 = verify()
-            if not error:
+            files_with_mismatched_md5 = verify()
+            if not files_with_mismatched_md5:
                 destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
             else:
-                if not files_with_mismatched_md5:
-                    logger.message_appeared.emit('*** %s: код возврата base-verify' % destination_host.hostname)
-                    destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
-                else:
-                    logger.message_appeared.emit('!!! %s: ошибка md5, повторное копирование: %s'
-                                                 % (destination_host.hostname, ' '.join(files_with_mismatched_md5)))
-                    for file in files_with_mismatched_md5:
-                        print('!'+file+'?')
-                        try:
-                            src = os.path.join(self.distribution.base, file)
-                            dst = os.path.join(
-                                                '\\\\' + destination_host.hostname + '\\'
-                                                + self.installation_path.text().replace(':', '$'), file)
-                            shutil.copyfile(src, dst)
-                        except:
-                            logger.message_appeared.emit('*** %s: повторное копирование' % destination_host.hostname)
-                            pass
+                logger.message_appeared.emit('!!! %s: ошибка проверки md5, повторное копирование: %s'
+                                             % (destination_host.hostname, ' '.join(files_with_mismatched_md5)))
+                for file in files_with_mismatched_md5:
+                    try:
+                        src = os.path.join(self.distribution.base, file)
+                        dst = os.path.join('\\\\' + destination_host.hostname + '\\'
+                                           + self.installation_path.text().replace(':', '$'), file)
+                        shutil.copyfile(src, dst)
+                    except:
+                        logger.message_appeared.emit('!!! %s: ошибка повторного копирования %s'
+                                                     % (destination_host.hostname, file))
+                        pass
 
-                    error, files_with_mismatched_md5 = verify()
-                    if not error:
+                    files_with_mismatched_md5 = verify()
+                    if not files_with_mismatched_md5:
                         destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
                     else:
-                        if not files_with_mismatched_md5:
-                            logger.message_appeared.emit('*** %s: код возврата base-verify' % destination_host.hostname)
-                        else:
-                            destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
-                            logger.message_appeared.emit('*** %s: файлы не прошли проверку: %s'
-                                                         % (destination_host.hostname, ' '.join(files_with_mismatched_md5)))
-                            destination_host.state = destination_host.base_state = Host.State.FAILURE
+                        logger.message_appeared.emit('*** %s: повторная ошибка проверки md5: %s'
+                                                     % (destination_host.hostname, ' '.join(files_with_mismatched_md5)))
+                        destination_host.state = destination_host.base_state = Host.State.FAILURE
+
         if source_host:
             source_host.state = Host.State.BASE_SUCCESS
         self.worker_needed.emit()
@@ -853,11 +845,9 @@ class Installer(QWidget):
         self.prepare_message = ''
         self.prepare_process_download = None
         self.prepare_process_unzip = None
-        self.configurations = ['Выбрать все', 'Снять выбор']
+        self.configurations = []
         self.table_data_dict = {}
         self.post_install_scripts_dict.clear()
-        self.post_install_scripts_dict['Выбрать все'] = ['Отсутствет post-скрипт']
-        self.post_install_scripts_dict['Снять выбор'] = ['Отсутствет post-скрипт']
         self.state = Installer.State.PREPARING
         self.state_changed.emit()
 
