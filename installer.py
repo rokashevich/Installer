@@ -640,7 +640,7 @@ class Installer(QWidget):
             # БЛОКИРУЮЩИЙ ПРОЦЕСС 4 - Проверяем base.txt
 
             def verify():
-                cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -v verify-base.exe' \
+                cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -f verify-base.exe' \
                       % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
                          self.installation_path.text().strip())
                 destination_host.md5_timer = 0
