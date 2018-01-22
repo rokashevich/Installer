@@ -358,25 +358,28 @@ class Installer(QWidget):
 
     def on_state_changed(self):
         if self.state == Installer.State.DEFAULT:
-            self.configurations_list.setDisabled(True)
-            self.installation_path.setDisabled(True)
-            self.button_start.setDisabled(True)
+            self.configurations_list.setEnabled(False)
+            self.installation_path.setEnabled(False)
+            self.button_start.setEnabled(False)
             self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
             self.button_browse.setEnabled(True)
-            self.table.setDisabled(True)
+            self.button_check.setEnabled(False)
+            self.table.setEnabled(False)
 
         elif self.state == Installer.State.PREPARING:
-            self.configurations_list.setDisabled(True)
-            self.installation_path.setDisabled(True)
-            self.button_start.setDisabled(True)
+            self.configurations_list.setEnabled(False)
+            self.installation_path.setEnabled(False)
+            self.button_start.setEnabled(False)
+            self.button_check.setEnabled(False)
             self.button_browse.setText('❌ Отменить')
             self.button_browse.setEnabled(True)
-            self.table.setDisabled(True)
+            self.table.setEnabled(False)
 
         # Распакован архив
         elif self.state == Installer.State.PREPARED:
             self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
             self.button_browse.setEnabled(True)
+            self.button_check.setEnabled(False)
             self.button_start.setText('➤ Старт')
             self.configurations_list.setEnabled(True)
             self.installation_path.setEnabled(True)
@@ -388,13 +391,14 @@ class Installer(QWidget):
                     self.configurations_list.sizeHintForColumn(0)
                     + 2 * self.configurations_list.frameWidth()
                 )
-                self.button_start.setDisabled(True)
+                self.button_start.setEnabled(False)
             self.table.setEnabled(True)
 
         elif self.state == Installer.State.INSTALLING:
-            self.button_browse.setDisabled(True)
-            self.configurations_list.setDisabled(True)
-            self.installation_path.setDisabled(True)
+            self.button_browse.setEnabled(False)
+            self.button_check.setEnabled(False)
+            self.configurations_list.setEnabled(False)
+            self.installation_path.setEnabled(False)
             self.button_start.setText('❌ Стоп')
             self.table.setEnabled(True)
 
@@ -420,6 +424,8 @@ class Installer(QWidget):
         self.table_changed.emit()
 
     def on_conf_selected(self):  # Выбрали мышкой конфигурацию
+        self.button_check.setEnabled(True)
+
         # Ключ доступа к выбранной конфигурации
         key = self.configurations[self.configurations_list.currentIndex().row()]
 
@@ -456,7 +462,7 @@ class Installer(QWidget):
         if self.installation_path.text() != '':
             self.button_start.setEnabled(True)
         else:
-            self.button_start.setDisabled(True)
+            self.button_start.setEnabled(False)
 
     def on_clicked_button_browse(self):
         if not self.state == Installer.State.PREPARING:
@@ -489,10 +495,10 @@ class Installer(QWidget):
 
     def do_stop_begin(self):
         self.stop = True
-        self.button_browse.setDisabled(True)
-        self.button_start.setDisabled(True)
-        self.configurations_list.setDisabled(True)
-        self.installation_path.setDisabled(True)
+        self.button_browse.setEnabled(False)
+        self.button_start.setEnabled(False)
+        self.configurations_list.setEnabled(False)
+        self.installation_path.setEnabled(False)
 
         threading.Thread(target=self.do_stop_end).start()
 
@@ -536,9 +542,13 @@ class Installer(QWidget):
     def on_clicked_button_check(self):
         if self.button_check.text() == '☐':
             self.button_check.setText('☑')
+            for host in self.table.model().data.hosts:
+                host.checked = False
         else:
             self.button_check.setText('☐')
-
+            for host in self.table.model().data.hosts:
+                host.checked = True
+        self.table_changed.emit()
 
     def remove_pid(self, pid):
         try:
@@ -652,35 +662,35 @@ class Installer(QWidget):
                 if self.stop:
                     return 'Принудительная остановка'
                 self.remove_pid(r.pid)
-                output = [file for file in ((r.communicate()[0]).decode().strip()).strip().split('\n')]
+                output = [file for file in (r.communicate()[0]).decode().strip().split('\n')]
                 if r.returncode:
                     return output
                 return []
 
-            files_with_mismatched_md5 = verify()
-            if not files_with_mismatched_md5:
-                destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
-            else:
-                logger.message_appeared.emit('!!! %s: ошибка проверки md5, повторное копирование: %s'
-                                             % (destination_host.hostname, ' '.join(files_with_mismatched_md5)))
-                for file in files_with_mismatched_md5:
-                    try:
-                        src = os.path.join(self.distribution.base, file)
-                        dst = os.path.join('\\\\' + destination_host.hostname + '\\'
-                                           + self.installation_path.text().replace(':', '$'), file)
-                        shutil.copyfile(src, dst)
-                    except:
-                        logger.message_appeared.emit('!!! %s: ошибка повторного копирования %s'
-                                                     % (destination_host.hostname, file))
-                        pass
+            retry = 3  # Делаем три попытки скопировать сбойные файлы заново
+            while retry:
+                retry -= 1
 
-                    files_with_mismatched_md5 = verify()
-                    if not files_with_mismatched_md5:
-                        destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
-                    else:
-                        logger.message_appeared.emit('*** %s: повторная ошибка проверки md5: %s'
-                                                     % (destination_host.hostname, ' '.join(files_with_mismatched_md5)))
+                files_with_mismatched_md5 = verify()
+                if not files_with_mismatched_md5:
+                    destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
+                    break
+                else:
+                    if retry == 0:
                         destination_host.state = destination_host.base_state = Host.State.FAILURE
+                    else:
+                        for file in files_with_mismatched_md5:
+                            try:
+                                logger.message_appeared.emit('!!! %s: ошибка md5, перекопирование, попытка %d: %s'
+                                                             % (destination_host.hostname, 3 - retry, file))
+                                src = os.path.join(self.distribution.base, file)
+                                dst = os.path.join('\\\\' + destination_host.hostname + '\\'
+                                                   + self.installation_path.text().replace(':', '$'), file)
+                                shutil.copyfile(src, dst)
+                            except:
+                                logger.message_appeared.emit('!!! %s: except повторного копирования %s'
+                                                             % (destination_host.hostname, file))
+                                pass
 
         if source_host:
             source_host.state = Host.State.BASE_SUCCESS
@@ -932,7 +942,7 @@ class Installer(QWidget):
         if os.path.exists(unpack_to):
             logger.message_appeared.emit('--- Удаление дистрибутива, распакованного в прошлый раз')
             shutil.rmtree(unpack_to)
-        cmd = '7za.exe x '+file+' -aoa -o'+unpack_to
+        cmd = '7za.exe x "'+file+'" -aoa -o"'+unpack_to+'"'
         logger.message_appeared.emit('--- >%s' % cmd)
         subprocess.run(cmd, shell=True)
         return unpack_to
