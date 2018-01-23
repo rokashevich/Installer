@@ -1,6 +1,9 @@
 @echo off
-cd %~dp0
 set "BASE=%1"
-set "HANDLE_EXE=handle%~n0.exe"
-for /f "tokens=3,6,8 delims=: " %%i in ('%HANDLE_EXE% -accepteula -nobanner "%BASE%"') do %HANDLE_EXE% -c %%j -y -p %%i
+rem C:\Windows\Temp\handle64.exe -accepteula -nobanner "%BASE%"
+rem echo -----
+setlocal enabledelayedexpansion
+for /f "tokens=3 delims= " %%a in ('C:\Windows\Temp\handle64.exe -accepteula -nobanner "%BASE%"') do (
+echo taskkill /t /f /pid %1
+)
 if exist %BASE% ( del /f/s/q %BASE% > nul & rd /s/q %BASE% )
