@@ -64,7 +64,7 @@ class Host:
 class TableData:
     class Host:
         def __init__(self, hostname, checked=True):
-            self.hostname = hostname
+            self.hostname = hostname.lower()
             self.checked = checked
             self.base_timer = -1
             self.md5_timer = -1
@@ -254,6 +254,7 @@ class Installer(QWidget):
         self.distribution = None
         self.stop = False
         self.pids = set()
+        self.hostname = subprocess.check_output('hostname').decode(errors='ignore').strip().lower()
 
         self.table = QTableView()
         self.table.setModel(TableModel())
@@ -572,26 +573,31 @@ class Installer(QWidget):
 
         # ПРОЦЕСС 1 - АТОМАРНЫЙ - "Отстрел" процессов, запущенных из директории для установки
 
-        cmd = r'wmic /node:"%s" /user:"%s" /password:"%s" process list full' \
-              % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
+        if self.hostname != destination_host.hostname:
+            auth = ' /node:"%s" /user:"%s" /password:"%s"' % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
+        else:
+            auth = ''
+        cmd = r'wmic%s process list full' % auth
+        print(cmd)
         r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         processes = []
-        for line in list(filter(None, [line.strip() for line in r.stdout.decode().splitlines()])):
+        for line in list(filter(None, [line.strip() for line in r.stdout.decode(errors='ignore').splitlines()])):
             if line.startswith('ExecutablePath='):
                 processes.append([line.split('=')[1], None])
             if line.startswith('Handle=') and not processes[-1][1]:
                 processes[-1][1] = line.split('=')[1]
         for process in processes:
             path = process[0].lower()
+            print('path='+path+' --- '+self.installation_path.text().lower())
             if path.startswith(self.installation_path.text().lower()):
                 pid = process[1]
-                subprocess.run('taskkill /s %s /u %s /p %s /t /f /pid %s'
-                               % (destination_host.hostname, Globals.samba_login, Globals.samba_password, pid)
-                               , shell=True)
+                cmd = 'taskkill /s %s /u %s /p %s /t /f /pid %s' % (destination_host.hostname, Globals.samba_login, Globals.samba_password, pid)
+                print(cmd)
+                subprocess.run(cmd, shell=True)
 
         # ПРОЦЕСС 2 - БЛОКИРУЮЩИЙ - Удаление файлов и каталогов из директории для установки
 
-        cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s cmd /c ' \
+        cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s cmd /c ' \
               r'"if exist %s ( del /f/s/q %s > nul & rd /s/q %s )"' \
               % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
                  self.installation_path.text(),
@@ -633,7 +639,7 @@ class Installer(QWidget):
         robocopy_options = [r'/e', r'/mt:32', r'/r:0', r'/w:0']
         robocopy_options += [r'/np', r'/nfl', r'/njh', r'/njs', r'/ndl', r'/nc', r'/ns']  # silent
         if source_hostname:
-            cmd = ['PsExec.exe', '-accepteula', '-nobanner', '\\\\' + source_hostname,
+            cmd = ['PsExec64.exe', '-accepteula', '-nobanner', '\\\\' + source_hostname,
                    '-u', Globals.samba_login, '-p', Globals.samba_password,
                    'robocopy', source_path, r'\\%s\%s' % (destination_host.hostname,
                                                           self.installation_path.text().strip().replace(':', '$'))] \
@@ -661,7 +667,7 @@ class Installer(QWidget):
                 logger.message_appeared.emit('!!! %s: returncode: %d' % (destination_host.hostname, r.returncode))
 
             def verify():
-                cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -f verify-base.exe' \
+                cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -f verify-base.exe' \
                       % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
                          self.installation_path.text().strip())
                 destination_host.md5_timer = 0
@@ -670,7 +676,7 @@ class Installer(QWidget):
                 if self.stop:
                     return 'Принудительная остановка'
                 self.remove_pid(r.pid)
-                output = [file for file in (r.communicate()[0]).decode().strip().split('\n')]
+                output = [file for file in (r.communicate()[0]).decode(errors='ignore').strip().split('\n')]
                 if r.returncode:
                     return output
                 return []
@@ -746,7 +752,7 @@ class Installer(QWidget):
         s = os.path.join(self.installation_path.text(), 'etc', 'post-install.bat')
         for host in [host for host in self.table.model().data.hosts if host.checked]:
             if host.state == Host.State.CONF_SUCCESS:
-                cmd = r'psexec \\' + host.hostname + ' -u ' + Globals.samba_login + ' -p ' + Globals.samba_password \
+                cmd = r'PsExec64.exe \\' + host.hostname + ' -u ' + Globals.samba_login + ' -p ' + Globals.samba_password \
                       + ' ' + s
                 r = subprocess.run(cmd, shell=True)
                 if r.returncode:
@@ -951,8 +957,9 @@ class Installer(QWidget):
             logger.message_appeared.emit('--- Удаление дистрибутива, распакованного в прошлый раз')
             shutil.rmtree(unpack_to)
         cmd = '7za.exe x "'+file+'" -aoa -o"'+unpack_to+'"'
-        logger.message_appeared.emit('--- >%s' % cmd)
-        subprocess.run(cmd, shell=True)
+        r = subprocess.run(cmd, shell=True)
+        if r.returncode != 0:
+            logger.message_appeared.emit('!!! Код возврата команды\n!!!%s\n!!! не 0, а %d' % (r.returncode, cmd))
         return unpack_to
 
     def on_title_changed(self):
