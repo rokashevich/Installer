@@ -27,7 +27,7 @@ sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import helpers
 from globals import Globals
 
-timestamp = datetime.datetime.now()
+now = datetime.datetime.now()
 
 
 class Logger(PyQt5.QtCore.QObject):
@@ -570,44 +570,66 @@ class Installer(QWidget):
 
         threading.Thread(target=timer).start()
 
-        source_hostname = source_host.hostname if source_host else None
-        source_path = self.installation_path.text() if source_host else self.distribution.base
+        # ПРОЦЕСС 1 - АТОМАРНЫЙ - "Отстрел" процессов, запущенных из директории для установки
 
-        # БЛОКИРУЮЩИЙ ПРОЦЕСС 1 - "Отстрел" найденных экзешников
+        cmd = r'wmic /node:"%s" /user:"%s" /password:"%s" process list full' \
+              % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
+        r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        processes = []
+        for line in list(filter(None, [line.strip() for line in r.stdout.decode().splitlines()])):
+            if line.startswith('ExecutablePath='):
+                processes.append([line.split('=')[1], None])
+            if line.startswith('Handle=') and not processes[-1][1]:
+                processes[-1][1] = line.split('=')[1]
+        for process in processes:
+            path = process[0].lower()
+            if path.startswith(self.installation_path.text().lower()):
+                pid = process[1]
+                subprocess.run('taskkill /s %s /u %s /p %s /t /f /pid %s'
+                               % (destination_host.hostname, Globals.samba_login, Globals.samba_password, pid)
+                               , shell=True)
 
-        if self.distribution.executables:
-            cmd = r'taskkill /s %s /u %s /p %s /t /f /im "' \
-                  % (destination_host.hostname, Globals.samba_login, Globals.samba_password) \
-                  + '" /im "'.join(self.distribution.executables)
-            cmd += '"'
-            logger.message_appeared.emit('--- ' + cmd)
-            r = subprocess.Popen(cmd, shell=True)
-            self.pids.add(r.pid)
-            r.wait()
-            if self.stop:
-                return 'Принудительная остановка'
-            self.remove_pid(r.pid)
-
-        # БЛОКИРУЮЩИЙ ПРОЦЕСС 2 - Очистка удалённой директории
+        # ПРОЦЕСС 2 - БЛОКИРУЮЩИЙ - Удаление файлов и каталогов из директории для установки
 
         cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s cmd /c ' \
               r'"if exist %s ( del /f/s/q %s > nul & rd /s/q %s )"' \
               % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
-                 self.installation_path.text().strip(),
-                 self.installation_path.text().strip(),
-                 self.installation_path.text().strip())
+                 self.installation_path.text(),
+                 self.installation_path.text(),
+                 self.installation_path.text())
         r = subprocess.Popen(cmd, shell=True)
         self.pids.add(r.pid)
         r.wait()
         if self.stop:
             return 'Принудительная остановка'
         self.remove_pid(r.pid)
-        if r.returncode != 0:
-            return 'cmd=%s ret=%d stdout=%s stderr=%s' % (cmd, r.returncode, r.stdout, r.stderr)
 
-        # БЛОКИРУЮЩИЙ ПРОЦЕСС 3 - Фактическое копирование файлов
+
+        # ПРОЦЕСС 3 - БЛОКИРУЮЩИЙ - Фактическое копирование файлов
+
+        source_hostname = source_host.hostname if source_host else None
+        source_path = self.installation_path.text() if source_host else self.distribution.base
 
         # https://ss64.com/nt/robocopy.html
+        # https://ss64.com/nt/robocopy-exit.html
+        # 16 ***FATAL ERROR***
+        # 15 FAIL MISM XTRA COPY
+        # 14 FAIL MISM XTRA
+        # 13 FAIL MISM COPY
+        # 12 FAIL MISM
+        # 11 FAIL XTRA COPY
+        # 10 FAIL XTRA
+        #  9 FAIL COPY
+        #  8 FAIL
+        #  7 MISM XTRA COPY OK
+        #  6 MISM XTRA OK
+        #  5 MISM COPY OK
+        #  4 MISM OK
+        #  3 XTRA COPY OK
+        #  2 XTRA OK
+        #  1 COPY OK
+        #  0 --no change--
+
         robocopy_options = [r'/e', r'/mt:32', r'/r:0', r'/w:0']
         robocopy_options += [r'/np', r'/nfl', r'/njh', r'/njs', r'/ndl', r'/nc', r'/ns']  # silent
         if source_hostname:
@@ -626,31 +648,17 @@ class Installer(QWidget):
             return 'Принудительная остановка'
         self.remove_pid(r.pid)
 
-        if r.returncode != 1:
-            # https://ss64.com/nt/robocopy-exit.html
-            # 16 ***FATAL ERROR***
-            # 15 FAIL MISM XTRA COPY
-            # 14 FAIL MISM XTRA
-            # 13 FAIL MISM COPY
-            # 12 FAIL MISM
-            # 11 FAIL XTRA COPY
-            # 10 FAIL XTRA
-            #  9 FAIL COPY
-            #  8 FAIL
-            #  7 MISM XTRA COPY OK
-            #  6 MISM XTRA OK
-            #  5 MISM COPY OK
-            #  4 MISM OK
-            #  3 XTRA COPY OK
-            #  2 XTRA OK
-            #  1 COPY OK
-            #  0 --no change--
-            logger.message_appeared.emit('*** %s: ошибка копирования base: cmd=%s returncode=%d'
-                                         % (destination_host.hostname, ' '.join(cmd), r.returncode))
+        if r.returncode >= 8:
+            logger.message_appeared.emit('!!! %s: cmd: %s' % (destination_host.hostname, ' '.join(cmd)))
+            logger.message_appeared.emit('*** %s: returncode: %d' % (destination_host.hostname, r.returncode))
             destination_host.state = destination_host.base_state = Host.State.FAILURE
         else:
 
-            # БЛОКИРУЮЩИЙ ПРОЦЕСС 4 - Проверяем base.txt
+            # БЛОКИРУЮЩИЙ ПРОЦЕСС 3 - Проверяем base.txt
+
+            if r.returncode != 1:
+                logger.message_appeared.emit('!!! %s: cmd: %s' % (destination_host.hostname, ' '.join(cmd)))
+                logger.message_appeared.emit('!!! %s: returncode: %d' % (destination_host.hostname, r.returncode))
 
             def verify():
                 cmd = r'PsExec.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -f verify-base.exe' \
