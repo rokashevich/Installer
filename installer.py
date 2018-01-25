@@ -578,7 +578,6 @@ class Installer(QWidget):
         else:
             auth = ''
         cmd = r'wmic%s process list full' % auth
-        print(cmd)
         r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         processes = []
         for line in list(filter(None, [line.strip() for line in r.stdout.decode(errors='ignore').splitlines()])):
@@ -588,11 +587,9 @@ class Installer(QWidget):
                 processes[-1][1] = line.split('=')[1]
         for process in processes:
             path = process[0].lower()
-            print('path='+path+' --- '+self.installation_path.text().lower())
             if path.startswith(self.installation_path.text().lower()):
                 pid = process[1]
                 cmd = 'taskkill /s %s /u %s /p %s /t /f /pid %s' % (destination_host.hostname, Globals.samba_login, Globals.samba_password, pid)
-                print(cmd)
                 subprocess.run(cmd, shell=True)
 
         # ПРОЦЕСС 2 - БЛОКИРУЮЩИЙ - Удаление файлов и каталогов из директории для установки
