@@ -865,8 +865,10 @@ class Installer(QWidget):
         self.state_changed.emit()
 
     def prepare_distribution(self, uri):
+        self.state = Installer.State.PREPARING
+        
         logger.message_appeared.emit('--- Выбрали ' + uri)
-
+        
         def timer():
             while self.state == Installer.State.PREPARING:
                 if not threading.main_thread().is_alive():
@@ -885,7 +887,6 @@ class Installer(QWidget):
         self.table_data_dict.clear()
         self.configurations_list.setModel(None)
         self.post_install_scripts_dict.clear()
-        self.state = Installer.State.PREPARING
         self.state_changed.emit()
 
         if uri.endswith('base.txt'):  # указали на уже распакованный дистрибутив
