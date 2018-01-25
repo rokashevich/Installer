@@ -66,6 +66,9 @@ class TableData:
         def __init__(self, hostname, checked=True):
             self.hostname = hostname.lower()
             self.checked = checked
+            self.clear()
+
+        def clear(self):
             self.base_timer = -1
             self.md5_timer = -1
             self.conf_counter_total = 0
@@ -75,6 +78,8 @@ class TableData:
             self.conf_state = Host.State.IDLE
             self.post_state = Host.State.IDLE
             self.state = Host.State.IDLE
+
+
 
     def __init__(self, source, destination=''):
         self.source = source
@@ -272,7 +277,6 @@ class Installer(QWidget):
 
         self.prepare_message = ''
         self.prepare_process_download = None
-        self.prepare_process_unzip = None
 
         self.copy_conf_in_progress = False
 
@@ -854,25 +858,22 @@ class Installer(QWidget):
         def timer():
             while self.state == Installer.State.PREPARING:
                 if not threading.main_thread().is_alive():
-                    if self.prepare_process_unzip:
-                        self.prepare_process_unzip.kill()
                     sys.exit()
                 self.state_changed.emit()
                 time.sleep(1)
                 self.distribution.prepare_timer += 1
                 self.window_title_changed.emit()
 
+        threading.Thread(target=timer).start()
+
         self.distribution = Installer.Distribution(uri)
         self.prepare_message = ''
         self.prepare_process_download = None
-        self.prepare_process_unzip = None
         self.configurations = []
         self.table_data_dict = {}
         self.post_install_scripts_dict.clear()
         self.state = Installer.State.PREPARING
         self.state_changed.emit()
-
-        threading.Thread(target=timer).start()
 
         if uri.endswith('base.txt'):  # указали на уже распакованный дистрибутив
             base_txt = uri
@@ -938,6 +939,10 @@ class Installer(QWidget):
             self.window_title_changed.emit()
 
         threading.Thread(target=get_path_size).start()
+
+        # Очищаем все добавленные хосты от какой-либо информации, оставшейся с прошлого раза (если есть)
+        for host in self.table.model().data.hosts:
+            host.clear()
 
         self.state = Installer.State.PREPARED
         self.state_changed.emit()
