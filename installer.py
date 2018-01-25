@@ -196,19 +196,19 @@ class Installer(QWidget):
                         conf_stat = ', conf (всего %d)' % host.conf_counter_total
 
                 if host.checked:
-                    pen_color = '#000'
+                    pen_color = '#000000'
                     if host.state == Host.State.BASE_INSTALLING_DESTINATION:
                         text = 'Копирование base...%s' % base_time
-                        background_color = '#f4f928'
+                        background_color = '#FFFFAA'
                     elif host.state == Host.State.BASE_SUCCESS or host.state == Host.State.BASE_INSTALLING_SOURCE:
                         text = 'Установлен base%s' % base_time
-                        background_color = '#c5f31f'
+                        background_color = '#FFFF55'
                     elif host.state == Host.State.CONF_SUCCESS:
                         text = 'Установлен base%s%s' % (base_time, conf_stat)
-                        background_color = '#94ed17'
+                        background_color = '#FFFF00'
                     elif host.state == Host.State.POST_SUCCESS:
                         text = 'Установлен base%s, conf%s; выполнен post-скрипт' % (base_time, conf_stat)
-                        background_color = '#63e60f'
+                        background_color = '#78D72F'
                     elif host.state == Host.State.SUCCESS:
                         text = 'Установлен base%s' % base_time
                         if host.conf_state == Host.State.CONF_SUCCESS:
@@ -216,10 +216,10 @@ class Installer(QWidget):
                         if host.post_state == Host.State.POST_SUCCESS:
                             text += '; post-скрипт выполнен'
                         text += ' - УСПЕХ'
-                        background_color = '#00eb00'
+                        background_color = '#78D72F'
                     elif host.state == Host.State.FAILURE:
                         text = 'ОШИБКА'
-                        background_color = '#ff5533'
+                        background_color = '#F23E35'
                     elif host.state == Host.State.IDLE:
                         text = 'Кликните, чтобы запустить только этот хост'
                         background_color = '#ffffff'
