@@ -65,10 +65,23 @@ class TableData:
     class Host:
         def __init__(self, hostname, checked=True):
             self.hostname = hostname.lower()
-            self.checked = checked
-            self.clear()
 
-        def clear(self):
+            self.base_timer = None
+            self.md5_timer = None
+            self.conf_counter_total = None
+            self.conf_counter_overwrite = None
+            self.installation_timer = None
+            self.base_state = None
+            self.conf_state = None
+            self.post_state = None
+            self.state = None
+            self.checked = None
+
+            self.reset()
+
+            self.checked = checked
+
+        def reset(self):
             self.base_timer = -1
             self.md5_timer = -1
             self.conf_counter_total = 0
@@ -78,7 +91,7 @@ class TableData:
             self.conf_state = Host.State.IDLE
             self.post_state = Host.State.IDLE
             self.state = Host.State.IDLE
-
+            self.checked = False
 
 
     def __init__(self, source, destination=''):
@@ -153,7 +166,6 @@ class Installer(QWidget):
             self.installation_timer = 0  # <=0 - процесс не запущен, >0 - процесс идёт
             self.executables = []
 
-    configurations_changed = pyqtSignal()
     configuration_changed = pyqtSignal()
     state_changed = pyqtSignal()
     row_changed = pyqtSignal(int)
@@ -869,8 +881,9 @@ class Installer(QWidget):
         self.distribution = Installer.Distribution(uri)
         self.prepare_message = ''
         self.prepare_process_download = None
-        self.configurations = []
-        self.table_data_dict = {}
+        self.configurations.clear()
+        self.table_data_dict.clear()
+        self.configurations_list.setModel(None)
         self.post_install_scripts_dict.clear()
         self.state = Installer.State.PREPARING
         self.state_changed.emit()
@@ -909,7 +922,6 @@ class Installer(QWidget):
                 self.table_data_dict[name] = table_data
 
         self.configurations.sort()
-        self.configurations_changed.emit()
 
         configurations_dir = os.path.abspath(os.path.join(os.path.dirname(base_txt), '..', 'conf'))
         if os.path.isdir(configurations_dir):
@@ -942,7 +954,7 @@ class Installer(QWidget):
 
         # Очищаем все добавленные хосты от какой-либо информации, оставшейся с прошлого раза (если есть)
         for host in self.table.model().data.hosts:
-            host.clear()
+            host.reset()
 
         self.state = Installer.State.PREPARED
         self.state_changed.emit()
