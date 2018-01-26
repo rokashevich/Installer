@@ -779,7 +779,6 @@ class Installer(QWidget):
 
     def worker(self):
         if not self.state == Installer.State.INSTALLING:
-            self.console.clear()
             self.distribution.installation_timer = 0
             self.state = Installer.State.INSTALLING
             self.state_changed.emit()
@@ -865,10 +864,6 @@ class Installer(QWidget):
         self.state_changed.emit()
 
     def prepare_distribution(self, uri):
-        self.state = Installer.State.PREPARING
-        
-        logger.message_appeared.emit('--- Выбрали ' + uri)
-        
         def timer():
             while self.state == Installer.State.PREPARING:
                 if not threading.main_thread().is_alive():
@@ -878,7 +873,11 @@ class Installer(QWidget):
                 self.distribution.prepare_timer += 1
                 self.window_title_changed.emit()
 
+        self.state = Installer.State.PREPARING
         threading.Thread(target=timer).start()
+
+        self.console.clear()  # Очищаем консоль перед каждым новым дистрибутивом
+        logger.message_appeared.emit('--- Открыли ' + uri)
 
         self.distribution = Installer.Distribution(uri)
         self.prepare_message = ''
@@ -974,7 +973,10 @@ class Installer(QWidget):
         cmd = '7za.exe x "'+file+'" -aoa -o"'+unpack_to+'"'
         r = subprocess.run(cmd, shell=True)
         if r.returncode != 0:
-            logger.message_appeared.emit('!!! Код возврата команды\n!!!%s\n!!! не 0, а %d' % (r.returncode, cmd))
+            logger.message_appeared.emit('!!! Сбой при распаковке архива \n'
+                                         '!!! %s\n'
+                                         '!!! код возврата не 0, а %d'
+                                         '!!! но, возможно, ничего страшного' % (r.returncode, cmd))
         return unpack_to
 
     def on_title_changed(self):
