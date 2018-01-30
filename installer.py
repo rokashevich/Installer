@@ -298,6 +298,7 @@ class Installer(QWidget):
         self.button_open_in_filemanager = QPushButton()
         self.button_open_in_filemanager.setIcon(QIcon('images//open_in_filemanager.png'))
         self.button_regenerate_base_txt = QPushButton()
+        self.button_regenerate_base_txt.setIcon(QIcon('images//regenerate_base_txt.png'))
 
         self.button_start = QPushButton('➤ Старт')
         self.button_console = QPushButton('📜 Лог')
