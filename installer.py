@@ -302,7 +302,8 @@ class Installer(QWidget):
 
         self.button_start = QPushButton('➤ Старт')
         self.button_console = QPushButton('📜 Лог')
-        self.button_check = QPushButton('☑')  # ☐ - uncheck
+        self.button_check = QPushButton()  # '☑'☐ - uncheck
+        self.button_check.setIcon(QIcon('images//check_on.png'))
 
         self.stacked = PyQt5.QtWidgets.QStackedWidget()
         self.stacked.addWidget(self.table)
