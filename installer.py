@@ -20,7 +20,7 @@ from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import (QApplication, QLineEdit, QHBoxLayout, QVBoxLayout, QTabWidget, QWidget, QTableView,
                              QPushButton, QLabel, QGridLayout, QTreeView, QItemDelegate, QComboBox,
                              QStyleOptionComboBox, QStyle, QFileDialog)
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSignal, pyqtSlot, QCoreApplication, QSettings
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
@@ -295,6 +295,9 @@ class Installer(QWidget):
         self.button_browse = QPushButton()
         self.configurations_list = PyQt5.QtWidgets.QListView()
         self.installation_path = QLineEdit()
+        self.button_open_in_filemanager = QPushButton()
+        self.button_open_in_filemanager.setIcon(QIcon('images//open_in_filemanager.png'))
+        self.button_regenerate_base_txt = QPushButton()
 
         self.button_start = QPushButton('➤ Старт')
         self.button_console = QPushButton('📜 Лог')
@@ -310,15 +313,17 @@ class Installer(QWidget):
         # If rowSpan and/or columnSpan is -1, then the widget will extend to the bottom and/or right edge, respectively.
         # https://doc.qt.io/qt-5/qgridlayout.html#addWidget-2
 
-        gl.addWidget(self.button_browse,             0, 0, 1, 1)  #
-        gl.addWidget(self.button_start,              0, 1, 1, 1)  # Верхний ряд кнопок
-        gl.addWidget(self.button_console,            0, 2, 1, 1)  #
-        gl.addWidget(self.button_check,              0, 3, 1, 1)  #
+        gl.addWidget(self.button_browse,              0, 0, 1, 1)  #
+        gl.addWidget(self.button_start,               0, 1, 1, 1)  # Верхний ряд кнопок
+        gl.addWidget(self.button_console,             0, 2, 1, 1)  #
+        gl.addWidget(self.button_check,               0, 3, 1, 1)  #
+        gl.addWidget(self.button_open_in_filemanager, 0, 4, 1, 1)  #
+        gl.addWidget(self.button_regenerate_base_txt, 0, 5, 1, 1)  #
 
-        gl.addWidget(self.configurations_list,       1, 0, 1, 4)  #
-        gl.addWidget(self.installation_path,         2, 0, 1, 4)  # Элементы друг над другом
+        gl.addWidget(self.configurations_list,       1, 0, 1, 6)  #
+        gl.addWidget(self.installation_path,         2, 0, 1, 6)  # Элементы друг над другом
 
-        gl.addWidget(self.stacked,                   0, 4, -1, 1)  # Контейнер: консоль или лог
+        gl.addWidget(self.stacked,                   0, 6, -1, 1)  # Контейнер: консоль или лог
 
         self.setLayout(gl)
 
