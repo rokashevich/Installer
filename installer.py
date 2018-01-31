@@ -48,7 +48,6 @@ class Host:
         BASE_INSTALLING_SOURCE = auto()
         BASE_INSTALLING_DESTINATION = auto()
         BASE_SUCCESS = auto()
-        BASE_FAILURE = auto()
         CONF_NON_NEEDED = auto()
         CONF_INSTALLING = auto()
         CONF_SUCCESS = auto()
@@ -91,7 +90,6 @@ class TableData:
             self.state = Host.State.IDLE
             self.checked = False
 
-
     def __init__(self, source, destination=''):
         self.source = source
         self.destination = destination if destination else self.source
@@ -100,7 +98,6 @@ class TableData:
     def add_host(self, hostname, checked=True):
         self.hosts.append(TableData.Host(hostname, checked))
         self.hosts.sort(key=lambda x: x.hostname)
-
 
 class TableModel(QAbstractTableModel):
     def __init__(self, parent=None):
@@ -267,7 +264,7 @@ class Installer(QWidget):
         self.post_install_scripts_dict = {}
 
         self.distribution = None
-        self.ignore_verify = False
+        self.do_verify = True
         self.stop = False
         self.pids = set()
         self.hostname = subprocess.check_output('hostname').decode(errors='ignore').strip().lower()
@@ -296,8 +293,8 @@ class Installer(QWidget):
         self.installation_path = QLineEdit()
         self.button_open_in_filemanager = QPushButton()
         self.button_open_in_filemanager.setIcon(QIcon('images//open_in_filemanager.png'))
-        self.button_ignore_verify = QPushButton()
-        self.button_ignore_verify.setIcon(QIcon('images//ignore_verify_false.png'))
+        self.button_do_verify = QPushButton()
+        self.button_do_verify.setIcon(QIcon('images//do_verify_true.png'))
 
         self.button_start = QPushButton('➤ Старт')
         self.button_console = QPushButton('📜 Лог')
@@ -318,7 +315,7 @@ class Installer(QWidget):
         gl.addWidget(self.button_console,             0, 2, 1, 1)  #
         gl.addWidget(self.button_check,               0, 3, 1, 1)  #
         gl.addWidget(self.button_open_in_filemanager, 0, 4, 1, 1)  #
-        gl.addWidget(self.button_ignore_verify,       0, 5, 1, 1)  #
+        gl.addWidget(self.button_do_verify,       0, 5, 1, 1)  #
 
         gl.addWidget(self.configurations_list,        1, 0, 1, 6)  #
         gl.addWidget(self.installation_path,          2, 0, 1, 6)  # Элементы друг над другом
@@ -340,7 +337,7 @@ class Installer(QWidget):
         self.button_console.clicked.connect(self.on_clicked_button_console)
         self.button_check.clicked.connect(self.on_clicked_button_check)
         self.button_open_in_filemanager.clicked.connect(self.on_clicked_button_open_in_filemanager)
-        self.button_ignore_verify.clicked.connect(self.on_clicked_button_ignore_verify)
+        self.button_do_verify.clicked.connect(self.on_clicked_button_do_verify)
         self.table.clicked.connect(self.on_clicked_table)
         self.state_changed.connect(self.on_state_changed)
         self.table_changed.connect(self.on_table_changed)
@@ -389,7 +386,7 @@ class Installer(QWidget):
             self.button_browse.setEnabled(True)
             self.button_check.setEnabled(False)
             self.button_open_in_filemanager.setEnabled(False)
-            self.button_ignore_verify.setEnabled(False)
+            self.button_do_verify.setEnabled(False)
             self.table.setEnabled(False)
 
         elif self.state == Installer.State.PREPARING:
@@ -400,7 +397,7 @@ class Installer(QWidget):
             self.button_browse.setText('❌ Отменить')
             self.button_browse.setEnabled(True)
             self.button_open_in_filemanager.setEnabled(False)
-            self.button_ignore_verify.setEnabled(False)
+            self.button_do_verify.setEnabled(False)
             self.table.setEnabled(False)
 
         # Распакован архив
@@ -410,7 +407,7 @@ class Installer(QWidget):
             self.button_check.setEnabled(False)
             self.button_start.setText('➤ Старт')
             self.button_open_in_filemanager.setEnabled(True)
-            self.button_ignore_verify.setEnabled(True)
+            self.button_do_verify.setEnabled(True)
             self.configurations_list.setEnabled(True)
             self.installation_path.setEnabled(True)
 
@@ -428,7 +425,7 @@ class Installer(QWidget):
             self.button_browse.setEnabled(False)
             self.button_check.setEnabled(False)
             self.button_open_in_filemanager.setEnabled(False)
-            self.button_ignore_verify.setEnabled(False)
+            self.button_do_verify.setEnabled(False)
             self.configurations_list.setEnabled(False)
             self.installation_path.setEnabled(False)
             self.button_start.setText('❌ Стоп')
@@ -586,13 +583,13 @@ class Installer(QWidget):
         if self.distribution:
             os.system('explorer %s' % self.distribution.base)
 
-    def on_clicked_button_ignore_verify(self):
-        if self.ignore_verify:
-            self.button_ignore_verify.setIcon(QIcon('images//ignore_verify_false.png'))
-            self.ignore_verify = False
+    def on_clicked_button_do_verify(self):
+        if self.do_verify:
+            self.button_do_verify.setIcon(QIcon('images//do_verify_false.png'))
+            self.do_verify = False
         else:
-            self.button_ignore_verify.setIcon(QIcon('images//ignore_verify_true.png'))
-            self.ignore_verify = True
+            self.button_do_verify.setIcon(QIcon('images//do_verify_true.png'))
+            self.do_verify = True
         
     def remove_pid(self, pid):
         try:
@@ -617,10 +614,12 @@ class Installer(QWidget):
         # ПРОЦЕСС 1 - АТОМАРНЫЙ - "Отстрел" процессов, запущенных из директории для установки
 
         if self.hostname != destination_host.hostname:
-            auth = ' /node:"%s" /user:"%s" /password:"%s"' % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
+            auth = ' /node:"%s" /user:"%s" /password:"%s"' \
+                   % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
         else:
             auth = ''
         cmd = r'wmic%s process list full' % auth
+        print('>>> ' + cmd)
         r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         processes = []
         for line in list(filter(None, [line.strip() for line in r.stdout.decode(errors='ignore').splitlines()])):
@@ -632,24 +631,34 @@ class Installer(QWidget):
             path = process[0].lower()
             if path.startswith(self.installation_path.text().lower()):
                 pid = process[1]
-                cmd = 'taskkill /s %s /u %s /p %s /t /f /pid %s' % (destination_host.hostname, Globals.samba_login, Globals.samba_password, pid)
+                if self.hostname != destination_host.hostname:
+                    auth = ' /s %s /u %s /p %s' \
+                           % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
+                else:
+                    auth = ''
+                cmd = 'taskkill%s /t /f /pid %s' % (auth, pid)
+                print('>>>' + cmd)
                 subprocess.run(cmd, shell=True)
 
         # ПРОЦЕСС 2 - БЛОКИРУЮЩИЙ - Удаление файлов и каталогов из директории для установки
 
-        cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s cmd /c ' \
-              r'"if exist %s ( del /f/s/q %s > nul & rd /s/q %s )"' \
-              % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
+        if self.hostname != destination_host.hostname:
+            auth = 'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s ' \
+                   % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
+        else:
+            auth = ''
+        cmd = r'%scmd /c "if exist %s ( del /f/s/q %s > nul & rd /s/q %s )"' \
+              % (auth,
                  self.installation_path.text(),
                  self.installation_path.text(),
                  self.installation_path.text())
+        print('>>> ' + cmd)
         r = subprocess.Popen(cmd, shell=True)
         self.pids.add(r.pid)
         r.wait()
         if self.stop:
             return 'Принудительная остановка'
         self.remove_pid(r.pid)
-
 
         # ПРОЦЕСС 3 - БЛОКИРУЮЩИЙ - Фактическое копирование файлов
 
@@ -687,6 +696,7 @@ class Installer(QWidget):
         else:
             cmd = ['robocopy'] + [source_path, '\\\\' + destination_host.hostname + '\\'
                                   + self.installation_path.text().strip().replace(':', '$')] + robocopy_options
+        print('>>> ' + ' '.join(cmd))
         r = subprocess.Popen(cmd, shell=True)
         self.pids.add(r.pid)
         r.wait()
@@ -705,28 +715,35 @@ class Installer(QWidget):
 
             # БЛОКИРУЮЩИЙ ПРОЦЕСС 3 - Проверяем base.txt
 
+            result = Host.State.BASE_SUCCESS
+
             def verify():
-                cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -f verify-base.exe' \
-                      % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
-                         self.installation_path.text().strip())
+                if self.hostname != destination_host.hostname:
+                    cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -f verify-base.exe' \
+                           % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
+                              self.installation_path.text())
+                else:
+                    cmd = r'cd /d %s & %s' % (self.installation_path.text(),
+                        os.path.join(os.path.dirname(os.path.realpath(__file__)), 'verify-base.exe'))
+                print('>>> ' + cmd)
                 destination_host.md5_timer = 0
                 r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                 self.pids.add(r.pid)
                 if self.stop:
                     return 'Принудительная остановка'
                 self.remove_pid(r.pid)
-                output = [file for file in (r.communicate()[0]).decode(errors='ignore').strip().split('\n')]
-                if r.returncode:
-                    return output
-                return []
+                output = list(
+                    filter(None, [file.strip() for file in (r.communicate()[0]).decode(errors='ignore').split('\n')]))
+                print('<<< ' + str(r.returncode) + ' <<< ' + str(output))
+                return r.returncode, output
 
-            result = Host.State.BASE_SUCCESS
-            files_with_mismatched_md5 = verify()
-            if files_with_mismatched_md5:
-                if not self.ignore_verify:
-                    result = Host.State.BASE_FAILURE
-                for file in files_with_mismatched_md5:
-                    logger.message_appeared.emit('!!! %s: ошибка md5: %s' % (destination_host.hostname, file))
+            returncode, files_with_mismatched_md5 = verify()
+            if returncode:
+                if self.do_verify:
+                    result = Host.State.FAILURE
+                if files_with_mismatched_md5:
+                    for file in files_with_mismatched_md5:
+                        logger.message_appeared.emit('!!! %s: ошибка md5: %s' % (destination_host.hostname, file))
             destination_host.state = result
 
         if source_host:
