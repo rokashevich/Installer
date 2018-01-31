@@ -71,7 +71,6 @@ class TableData:
             self.conf_counter_total = None
             self.conf_counter_overwrite = None
             self.installation_timer = None
-            self.base_state = None
             self.conf_state = None
             self.post_state = None
             self.state = None
@@ -87,7 +86,6 @@ class TableData:
             self.conf_counter_total = 0
             self.conf_counter_overwrite = 0
             self.installation_timer = 0
-            self.base_state = Host.State.IDLE
             self.conf_state = Host.State.IDLE
             self.post_state = Host.State.IDLE
             self.state = Host.State.IDLE
@@ -699,7 +697,7 @@ class Installer(QWidget):
         if r.returncode >= 8:
             logger.message_appeared.emit('!!! %s: cmd: %s' % (destination_host.hostname, ' '.join(cmd)))
             logger.message_appeared.emit('*** %s: returncode: %d' % (destination_host.hostname, r.returncode))
-            destination_host.state = destination_host.base_state = Host.State.FAILURE
+            destination_host.state = Host.State.FAILURE
         else:
             if r.returncode != 1:
                 logger.message_appeared.emit('!!! %s: команда: %s' % (destination_host.hostname, ' '.join(cmd)))
