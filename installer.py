@@ -269,6 +269,7 @@ class Installer(QWidget):
         self.post_install_scripts_dict = {}
 
         self.distribution = None
+        self.ignore_verify = False
         self.stop = False
         self.pids = set()
         self.hostname = subprocess.check_output('hostname').decode(errors='ignore').strip().lower()
@@ -297,13 +298,12 @@ class Installer(QWidget):
         self.installation_path = QLineEdit()
         self.button_open_in_filemanager = QPushButton()
         self.button_open_in_filemanager.setIcon(QIcon('images//open_in_filemanager.png'))
-        self.button_regenerate_base_txt = QPushButton()
-        self.button_regenerate_base_txt.setIcon(QIcon('images//regenerate_base_txt.png'))
+        self.button_ignore_verify = QPushButton()
+        self.button_ignore_verify.setIcon(QIcon('images//ignore_verify_false.png'))
 
         self.button_start = QPushButton('➤ Старт')
         self.button_console = QPushButton('📜 Лог')
-        self.button_check = QPushButton()  # '☑'☐ - uncheck
-        self.button_check.setIcon(QIcon('images//check_on.png'))
+        self.button_check = QPushButton('☑')  # ☐ - uncheck
 
         self.stacked = PyQt5.QtWidgets.QStackedWidget()
         self.stacked.addWidget(self.table)
@@ -320,12 +320,12 @@ class Installer(QWidget):
         gl.addWidget(self.button_console,             0, 2, 1, 1)  #
         gl.addWidget(self.button_check,               0, 3, 1, 1)  #
         gl.addWidget(self.button_open_in_filemanager, 0, 4, 1, 1)  #
-        gl.addWidget(self.button_regenerate_base_txt, 0, 5, 1, 1)  #
+        gl.addWidget(self.button_ignore_verify,       0, 5, 1, 1)  #
 
-        gl.addWidget(self.configurations_list,       1, 0, 1, 6)  #
-        gl.addWidget(self.installation_path,         2, 0, 1, 6)  # Элементы друг над другом
+        gl.addWidget(self.configurations_list,        1, 0, 1, 6)  #
+        gl.addWidget(self.installation_path,          2, 0, 1, 6)  # Элементы друг над другом
 
-        gl.addWidget(self.stacked,                   0, 6, -1, 1)  # Контейнер: консоль или лог
+        gl.addWidget(self.stacked,                    0, 6, -1, 1)  # Контейнер: консоль или лог
 
         self.setLayout(gl)
 
@@ -341,6 +341,8 @@ class Installer(QWidget):
         self.button_start.clicked.connect(self.on_clicked_button_start)
         self.button_console.clicked.connect(self.on_clicked_button_console)
         self.button_check.clicked.connect(self.on_clicked_button_check)
+        self.button_open_in_filemanager.clicked.connect(self.on_clicked_button_open_in_filemanager)
+        self.button_ignore_verify.clicked.connect(self.on_clicked_button_ignore_verify)
         self.table.clicked.connect(self.on_clicked_table)
         self.state_changed.connect(self.on_state_changed)
         self.table_changed.connect(self.on_table_changed)
@@ -388,6 +390,8 @@ class Installer(QWidget):
             self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
             self.button_browse.setEnabled(True)
             self.button_check.setEnabled(False)
+            self.button_open_in_filemanager.setEnabled(False)
+            self.button_ignore_verify.setEnabled(False)
             self.table.setEnabled(False)
 
         elif self.state == Installer.State.PREPARING:
@@ -397,6 +401,8 @@ class Installer(QWidget):
             self.button_check.setEnabled(False)
             self.button_browse.setText('❌ Отменить')
             self.button_browse.setEnabled(True)
+            self.button_open_in_filemanager.setEnabled(False)
+            self.button_ignore_verify.setEnabled(False)
             self.table.setEnabled(False)
 
         # Распакован архив
@@ -405,6 +411,8 @@ class Installer(QWidget):
             self.button_browse.setEnabled(True)
             self.button_check.setEnabled(False)
             self.button_start.setText('➤ Старт')
+            self.button_open_in_filemanager.setEnabled(True)
+            self.button_ignore_verify.setEnabled(True)
             self.configurations_list.setEnabled(True)
             self.installation_path.setEnabled(True)
 
@@ -421,6 +429,8 @@ class Installer(QWidget):
         elif self.state == Installer.State.INSTALLING:
             self.button_browse.setEnabled(False)
             self.button_check.setEnabled(False)
+            self.button_open_in_filemanager.setEnabled(False)
+            self.button_ignore_verify.setEnabled(False)
             self.configurations_list.setEnabled(False)
             self.installation_path.setEnabled(False)
             self.button_start.setText('❌ Стоп')
@@ -574,6 +584,18 @@ class Installer(QWidget):
                 host.checked = True
         self.table_changed.emit()
 
+    def on_clicked_button_open_in_filemanager(self):
+        if self.distribution:
+            os.system('explorer %s' % self.distribution.base)
+
+    def on_clicked_button_ignore_verify(self):
+        if self.ignore_verify:
+            self.button_ignore_verify.setIcon(QIcon('images//ignore_verify_false.png'))
+            self.ignore_verify = False
+        else:
+            self.button_ignore_verify.setIcon(QIcon('images//ignore_verify_true.png'))
+            self.ignore_verify = True
+        
     def remove_pid(self, pid):
         try:
             self.pids.remove(pid)
@@ -679,12 +701,11 @@ class Installer(QWidget):
             logger.message_appeared.emit('*** %s: returncode: %d' % (destination_host.hostname, r.returncode))
             destination_host.state = destination_host.base_state = Host.State.FAILURE
         else:
+            if r.returncode != 1:
+                logger.message_appeared.emit('!!! %s: команда: %s' % (destination_host.hostname, ' '.join(cmd)))
+                logger.message_appeared.emit('!!! %s: код возврата: %d' % (destination_host.hostname, r.returncode))
 
             # БЛОКИРУЮЩИЙ ПРОЦЕСС 3 - Проверяем base.txt
-
-            if r.returncode != 1:
-                logger.message_appeared.emit('!!! %s: cmd: %s' % (destination_host.hostname, ' '.join(cmd)))
-                logger.message_appeared.emit('!!! %s: returncode: %d' % (destination_host.hostname, r.returncode))
 
             def verify():
                 cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -f verify-base.exe' \
@@ -701,30 +722,14 @@ class Installer(QWidget):
                     return output
                 return []
 
-            retry = 3  # Делаем три попытки скопировать сбойные файлы заново
-            while retry:
-                retry -= 1
-
-                files_with_mismatched_md5 = verify()
-                if not files_with_mismatched_md5:
-                    destination_host.state = destination_host.base_state = Host.State.BASE_SUCCESS
-                    break
-                else:
-                    if retry == 0:
-                        destination_host.state = destination_host.base_state = Host.State.FAILURE
-                    else:
-                        for file in files_with_mismatched_md5:
-                            try:
-                                logger.message_appeared.emit('!!! %s: ошибка md5, перекопирование, попытка %d: %s'
-                                                             % (destination_host.hostname, 3 - retry, file))
-                                src = os.path.join(self.distribution.base, file)
-                                dst = os.path.join('\\\\' + destination_host.hostname + '\\'
-                                                   + self.installation_path.text().replace(':', '$'), file)
-                                shutil.copyfile(src, dst)
-                            except:
-                                logger.message_appeared.emit('!!! %s: except повторного копирования %s'
-                                                             % (destination_host.hostname, file))
-                                pass
+            result = Host.State.BASE_SUCCESS
+            files_with_mismatched_md5 = verify()
+            if files_with_mismatched_md5:
+                if not self.ignore_verify:
+                    result = Host.State.BASE_FAILURE
+                for file in files_with_mismatched_md5:
+                    logger.message_appeared.emit('!!! %s: ошибка md5: %s' % (destination_host.hostname, file))
+            destination_host.state = result
 
         if source_host:
             source_host.state = Host.State.BASE_SUCCESS
