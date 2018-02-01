@@ -70,10 +70,3 @@ def bytes_to_human(num, suffix='B'):
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f%s%s" % (num, 'Yi', suffix)
-
-
-def md5sum(dir):
-    # Для win32 использовать certutil
-    # certutil.exe -hashfile D:\Temp\test-distro-4\base\scripts\python\3.6.2\_ssl.pyd MD5
-    pass
-

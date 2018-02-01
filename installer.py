@@ -2,6 +2,7 @@
 
 # https://www.utf8icons.com/
 
+import codecs
 import datetime
 import os
 import sys
@@ -26,8 +27,6 @@ from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSignal, pyqtSlot
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import helpers
 from globals import Globals
-
-now = datetime.datetime.now()
 
 
 class Logger(PyQt5.QtCore.QObject):
@@ -259,6 +258,10 @@ class Installer(QWidget):
 
         self.version = open('version.txt').read() if os.path.exists('version.txt') else 'DEV'
 
+        self.log_file = os.path.join('var', 'log', '%s.txt' % datetime.datetime.now().strftime("%Y-%m-%d-%H%M"))
+        if not os.path.exists(os.path.dirname(self.log_file)):
+            os.makedirs(os.path.dirname(self.log_file))
+
         self.console = PyQt5.QtWidgets.QTextBrowser()
 
         self.post_install_scripts_dict = {}
@@ -291,8 +294,10 @@ class Installer(QWidget):
         self.button_browse = QPushButton()
         self.configurations_list = PyQt5.QtWidgets.QListView()
         self.installation_path = QLineEdit()
-        self.button_open_in_filemanager = QPushButton()
-        self.button_open_in_filemanager.setIcon(QIcon('images//open_in_filemanager.png'))
+        self.button_base = QPushButton()
+        self.button_base.setIcon(QIcon('images//base.png'))
+        self.button_conf = QPushButton()
+        self.button_conf.setIcon(QIcon('images//conf.png'))
         self.button_do_verify = QPushButton()
         self.button_do_verify.setIcon(QIcon('images//do_verify_true.png'))
 
@@ -314,13 +319,14 @@ class Installer(QWidget):
         gl.addWidget(self.button_start,               0, 1, 1, 1)  # Верхний ряд кнопок
         gl.addWidget(self.button_console,             0, 2, 1, 1)  #
         gl.addWidget(self.button_check,               0, 3, 1, 1)  #
-        gl.addWidget(self.button_open_in_filemanager, 0, 4, 1, 1)  #
-        gl.addWidget(self.button_do_verify,       0, 5, 1, 1)  #
+        gl.addWidget(self.button_base,                0, 4, 1, 1)  #
+        gl.addWidget(self.button_conf,                0, 5, 1, 1)  #
+        gl.addWidget(self.button_do_verify,           0, 6, 1, 1)  #
 
-        gl.addWidget(self.configurations_list,        1, 0, 1, 6)  #
-        gl.addWidget(self.installation_path,          2, 0, 1, 6)  # Элементы друг над другом
+        gl.addWidget(self.configurations_list,        1, 0, 1, 7)  #
+        gl.addWidget(self.installation_path,          2, 0, 1, 7)  # Элементы друг над другом
 
-        gl.addWidget(self.stacked,                    0, 6, -1, 1)  # Контейнер: консоль или лог
+        gl.addWidget(self.stacked,                    0, 7, -1, 1)  # Контейнер: консоль или лог
 
         self.setLayout(gl)
 
@@ -336,7 +342,8 @@ class Installer(QWidget):
         self.button_start.clicked.connect(self.on_clicked_button_start)
         self.button_console.clicked.connect(self.on_clicked_button_console)
         self.button_check.clicked.connect(self.on_clicked_button_check)
-        self.button_open_in_filemanager.clicked.connect(self.on_clicked_button_open_in_filemanager)
+        self.button_base.clicked.connect(self.on_clicked_button_base)
+        self.button_conf.clicked.connect(self.on_clicked_button_conf)
         self.button_do_verify.clicked.connect(self.on_clicked_button_do_verify)
         self.table.clicked.connect(self.on_clicked_table)
         self.state_changed.connect(self.on_state_changed)
@@ -371,8 +378,14 @@ class Installer(QWidget):
         threading.Thread(target=installation_timer).start()
 
     def on_message_appeared(self, message):
-        print(message)
-        self.console.append(message)
+        s = '%s %s' % (datetime.datetime.now().strftime("%H:%M:%S"), message)
+        try:
+            codecs.open(self.log_file, 'a', 'utf-8').write(s + os.linesep)
+        except:
+            self.console.append('Ошибка записи в лог!')
+        print(s)
+        if not message.startswith('>>> ') and not message.startswith('<<< '):
+            self.console.append(s)
 
     def on_table_changed(self):
         self.table.model().updateTable()
@@ -385,7 +398,8 @@ class Installer(QWidget):
             self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
             self.button_browse.setEnabled(True)
             self.button_check.setEnabled(False)
-            self.button_open_in_filemanager.setEnabled(False)
+            self.button_base.setEnabled(False)
+            self.button_conf.setEnabled(False)
             self.button_do_verify.setEnabled(False)
             self.table.setEnabled(False)
 
@@ -396,7 +410,8 @@ class Installer(QWidget):
             self.button_check.setEnabled(False)
             self.button_browse.setText('❌ Отменить')
             self.button_browse.setEnabled(True)
-            self.button_open_in_filemanager.setEnabled(False)
+            self.button_base.setEnabled(False)
+            self.button_conf.setEnabled(False)
             self.button_do_verify.setEnabled(False)
             self.table.setEnabled(False)
 
@@ -406,7 +421,8 @@ class Installer(QWidget):
             self.button_browse.setEnabled(True)
             self.button_check.setEnabled(False)
             self.button_start.setText('➤ Старт')
-            self.button_open_in_filemanager.setEnabled(True)
+            self.button_base.setEnabled(True)
+            self.button_conf.setEnabled(False)
             self.button_do_verify.setEnabled(True)
             self.configurations_list.setEnabled(True)
             self.installation_path.setEnabled(True)
@@ -424,7 +440,8 @@ class Installer(QWidget):
         elif self.state == Installer.State.INSTALLING:
             self.button_browse.setEnabled(False)
             self.button_check.setEnabled(False)
-            self.button_open_in_filemanager.setEnabled(False)
+            self.button_base.setEnabled(False)
+            self.button_conf.setEnabled(False)
             self.button_do_verify.setEnabled(False)
             self.configurations_list.setEnabled(False)
             self.installation_path.setEnabled(False)
@@ -454,6 +471,7 @@ class Installer(QWidget):
 
     def on_conf_selected(self):  # Выбрали мышкой конфигурацию
         self.button_check.setEnabled(True)
+        self.button_conf.setEnabled(True)
 
         # Ключ доступа к выбранной конфигурации
         key = self.configurations[self.configurations_list.currentIndex().row()]
@@ -516,10 +534,8 @@ class Installer(QWidget):
 
     def on_clicked_button_start(self):
         if not self.state == Installer.State.INSTALLING:
-            logger.message_appeared.emit('--- СТАРТ')
             self.do_start_spider()
         else:
-            logger.message_appeared.emit('--- СТОП')
             self.do_stop_begin()
 
     def do_stop_begin(self):
@@ -579,9 +595,12 @@ class Installer(QWidget):
                 host.checked = True
         self.table_changed.emit()
 
-    def on_clicked_button_open_in_filemanager(self):
-        if self.distribution:
-            os.system('explorer %s' % self.distribution.base)
+    def on_clicked_button_base(self):
+        subprocess.run('explorer %s' % self.distribution.base, shell=True)
+
+    def on_clicked_button_conf(self):
+        subprocess.run('explorer %s' % os.path.join(self.distribution.configurations_dir,
+                                   self.configurations[self.configurations_list.currentIndex().row()]), shell=True)
 
     def on_clicked_button_do_verify(self):
         if self.do_verify:
@@ -619,7 +638,7 @@ class Installer(QWidget):
         else:
             auth = ''
         cmd = r'wmic%s process list full' % auth
-        print('>>> ' + cmd)
+        logger.message_appeared.emit('>>> ' + cmd)
         r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         processes = []
         for line in list(filter(None, [line.strip() for line in r.stdout.decode(errors='ignore').splitlines()])):
@@ -637,13 +656,13 @@ class Installer(QWidget):
                 else:
                     auth = ''
                 cmd = 'taskkill%s /t /f /pid %s' % (auth, pid)
-                print('>>>' + cmd)
+                logger.message_appeared.emit('>>>' + cmd)
                 subprocess.run(cmd, shell=True)
 
         # ПРОЦЕСС 2 - БЛОКИРУЮЩИЙ - Удаление файлов и каталогов из директории для установки
 
         if self.hostname != destination_host.hostname:
-            auth = 'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s ' \
+            auth = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s ' \
                    % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
         else:
             auth = ''
@@ -652,7 +671,7 @@ class Installer(QWidget):
                  self.installation_path.text(),
                  self.installation_path.text(),
                  self.installation_path.text())
-        print('>>> ' + cmd)
+        logger.message_appeared.emit('>>> ' + cmd)
         r = subprocess.Popen(cmd, shell=True)
         self.pids.add(r.pid)
         r.wait()
@@ -696,7 +715,7 @@ class Installer(QWidget):
         else:
             cmd = ['robocopy'] + [source_path, '\\\\' + destination_host.hostname + '\\'
                                   + self.installation_path.text().strip().replace(':', '$')] + robocopy_options
-        print('>>> ' + ' '.join(cmd))
+        logger.message_appeared.emit('>>> ' + ' '.join(cmd))
         r = subprocess.Popen(cmd, shell=True)
         self.pids.add(r.pid)
         r.wait()
@@ -725,7 +744,7 @@ class Installer(QWidget):
                 else:
                     cmd = r'cd /d %s & %s' % (self.installation_path.text(),
                         os.path.join(os.path.dirname(os.path.realpath(__file__)), 'verify-base.exe'))
-                print('>>> ' + cmd)
+                logger.message_appeared.emit('>>> ' + cmd)
                 destination_host.md5_timer = 0
                 r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                 self.pids.add(r.pid)
@@ -734,7 +753,7 @@ class Installer(QWidget):
                 self.remove_pid(r.pid)
                 output = list(
                     filter(None, [file.strip() for file in (r.communicate()[0]).decode(errors='ignore').split('\n')]))
-                print('<<< ' + str(r.returncode) + ' <<< ' + str(output))
+                logger.message_appeared.emit('<<< ' + str(r.returncode) + ' <<< ' + str(output))
                 return r.returncode, output
 
             returncode, files_with_mismatched_md5 = verify()
@@ -843,22 +862,17 @@ class Installer(QWidget):
         if any_base_copy_started:
             return
 
-        # Копирование conf
-
-        if (self.configurations_list.currentIndex().row() >= 0
-                and self.configurations_list.currentIndex().row() < self.configurations_list.model().rowCount() - 2):
-
-            # Если хотя бы один QUEUED, то значит ещё не везде ещё скопирован base - выходим.
-            for host in [host for host in self.table.model().data.hosts if host.checked]:
-                if (host.state == Host.State.QUEUED or host.state == Host.State.BASE_INSTALLING_SOURCE
-                        or host.state == Host.State.BASE_INSTALLING_DESTINATION):
-                    return
-            # Если нет ни одного QUEUED, значит все так или иначе прошли копирование base - поэтому ищем BASE_SUCCESS
-            # и ставим копирование conf.
-            for host in [host for host in self.table.model().data.hosts if host.checked]:
-                if host.state == Host.State.BASE_SUCCESS:
-                    threading.Thread(target=self.do_copy_conf).start()
-                    return
+        # Если хотя бы один QUEUED, то значит ещё не везде ещё скопирован base - выходим.
+        for host in [host for host in self.table.model().data.hosts if host.checked]:
+            if (host.state == Host.State.QUEUED or host.state == Host.State.BASE_INSTALLING_SOURCE
+                    or host.state == Host.State.BASE_INSTALLING_DESTINATION):
+                return
+        # Если нет ни одного QUEUED, значит все так или иначе прошли копирование base - поэтому ищем BASE_SUCCESS
+        # и ставим копирование conf.
+        for host in [host for host in self.table.model().data.hosts if host.checked]:
+            if host.state == Host.State.BASE_SUCCESS:
+                threading.Thread(target=self.do_copy_conf).start()
+                return
 
         # Выполнение post-скриптов
         s = os.path.join(self.distribution.configurations_dir,

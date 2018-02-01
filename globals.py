@@ -3,5 +3,5 @@
 
 class Globals:
     organization_name = 'rokashevich@gmail.com'
-    samba_login = 'st'
-    samba_password = 'stinstaller'
+    samba_login = 'r'
+    samba_password = '1'
