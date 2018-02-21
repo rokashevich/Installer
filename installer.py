@@ -18,6 +18,7 @@ from enum import Enum, auto
 
 import PyQt5
 from PyQt5 import QtWidgets
+
 from PyQt5.QtWidgets import (QApplication, QLineEdit, QHBoxLayout, QVBoxLayout, QTabWidget, QWidget, QTableView,
                              QPushButton, QLabel, QGridLayout, QTreeView, QItemDelegate, QComboBox,
                              QStyleOptionComboBox, QStyle, QFileDialog)
@@ -915,10 +916,12 @@ class Installer(QWidget):
                 self.window_title_changed.emit()
 
         self.state = Installer.State.PREPARING
+        self.button_console.setStyleSheet("background-color:;")
+
         threading.Thread(target=timer).start()
 
         self.console.clear()  # Очищаем консоль перед каждым новым дистрибутивом
-        logger.message_appeared.emit('--- Открыли ' + uri)
+        logger.message_appeared.emit('--- Открываем ' + uri)
 
         self.distribution = Installer.Distribution(uri)
         self.prepare_message = ''
@@ -942,6 +945,7 @@ class Installer(QWidget):
             else:
                 self.state = Installer.State.DEFAULT
                 logger.message_appeared.emit('*** После распаковки не найден base.txt')
+                self.button_console.setStyleSheet("background-color:#F23E35;")
                 self.state_changed.emit()
                 return
 
@@ -982,6 +986,8 @@ class Installer(QWidget):
                 if file.endswith('.exe'):
                     self.distribution.executables.append(file)
 
+        self.button_console.setStyleSheet("background-color:;")
+
         def get_path_size():
             for dirpath, dirnames, filenames in os.walk(self.distribution.base):
                 for f in filenames:
@@ -1014,10 +1020,7 @@ class Installer(QWidget):
         cmd = '7za.exe x "'+file+'" -aoa -o"'+unpack_to+'"'
         r = subprocess.run(cmd, shell=True)
         if r.returncode != 0:
-            logger.message_appeared.emit('!!! Сбой при распаковке архива \n'
-                                         '!!! %s\n'
-                                         '!!! код возврата не 0, а %d'
-                                         '!!! но, возможно, ничего страшного' % (r.returncode, cmd))
+            logger.message_appeared.emit('!!! Сбой при распаковке архива, архив битый?')
         return unpack_to
 
     def on_title_changed(self):
