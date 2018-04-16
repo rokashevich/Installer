@@ -301,6 +301,8 @@ class Installer(QWidget):
         self.button_conf.setIcon(QIcon('images//conf.png'))
         self.button_do_verify = QPushButton()
         self.button_do_verify.setIcon(QIcon('images//do_verify_true.png'))
+        self.button_about = QPushButton()
+        self.button_about.setIcon(QIcon('images//about.png'))
 
         self.button_start = QPushButton('➤ Старт')
         self.button_console = QPushButton('📜 Лог')
@@ -323,11 +325,12 @@ class Installer(QWidget):
         gl.addWidget(self.button_base,                0, 4, 1, 1)  #
         gl.addWidget(self.button_conf,                0, 5, 1, 1)  #
         gl.addWidget(self.button_do_verify,           0, 6, 1, 1)  #
+        gl.addWidget(self.button_about,               0, 7, 1, 1)  #
 
-        gl.addWidget(self.configurations_list,        1, 0, 1, 7)  #
-        gl.addWidget(self.installation_path,          2, 0, 1, 7)  # Элементы друг над другом
+        gl.addWidget(self.configurations_list,        1, 0, 1, 8)  #
+        gl.addWidget(self.installation_path,          2, 0, 1, 8)  # Элементы друг над другом
 
-        gl.addWidget(self.stacked,                    0, 7, -1, 1)  # Контейнер: консоль или лог
+        gl.addWidget(self.stacked,                    0, 8, -1, 1)  # Контейнер: консоль или лог
 
         self.setLayout(gl)
 
@@ -346,6 +349,7 @@ class Installer(QWidget):
         self.button_base.clicked.connect(self.on_clicked_button_base)
         self.button_conf.clicked.connect(self.on_clicked_button_conf)
         self.button_do_verify.clicked.connect(self.on_clicked_button_do_verify)
+        self.button_about.clicked.connect(self.on_clicked_button_about)
         self.table.clicked.connect(self.on_clicked_table)
         self.state_changed.connect(self.on_state_changed)
         self.table_changed.connect(self.on_table_changed)
@@ -610,6 +614,11 @@ class Installer(QWidget):
         else:
             self.button_do_verify.setIcon(QIcon('images//do_verify_true.png'))
             self.do_verify = True
+
+    @staticmethod
+    def on_clicked_button_about(self):
+        page = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'about', 'about.html')
+        os.system('start ' + page)
         
     def remove_pid(self, pid):
         try:
