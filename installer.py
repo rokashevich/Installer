@@ -860,15 +860,23 @@ class Installer(QWidget):
                     have_source_host = True
                     break
         if not have_source_host:
+            first_host = None 
             for destination_host in [host for host in self.table.model().data.hosts if host.checked]:
-                if destination_host.state == destination_host.state.QUEUED:
-                    destination_host.state = Host.State.BASE_INSTALLING_DESTINATION
-                    logger.message_appeared.emit('--- Копирование base: localhost -> %s' % destination_host.hostname)
-                    destination_host.base_timer = -1
-                    destination_host.md5_timer = -1
-                    threading.Thread(target=self.do_copy_base, args=(None, destination_host)).start()
-                    any_base_copy_started = True
+                if destination_host.hostname == self.hostname and destination_host.state == destination_host.state.QUEUED:
+                    first_host = destination_host  # Начинаем с локального компьютера, если возможно
                     break
+            if not first_host:
+                for destination_host in [host for host in self.table.model().data.hosts if host.checked]:
+                    if destination_host.state == destination_host.state.QUEUED:
+                        first_host = destination_host
+                        break
+            if first_host:
+                first_host.state = Host.State.BASE_INSTALLING_DESTINATION
+                logger.message_appeared.emit('--- Копирование base: localhost -> %s' % first_host.hostname)
+                first_host.base_timer = -1
+                first_host.md5_timer = -1
+                threading.Thread(target=self.do_copy_base, args=(None, first_host)).start()
+                any_base_copy_started = True
         if any_base_copy_started:
             return
 
