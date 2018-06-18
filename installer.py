@@ -304,9 +304,9 @@ class Installer(QWidget):
         self.button_about = QPushButton()
         self.button_about.setIcon(QIcon('images//about.png'))
 
-        self.button_start = QPushButton('➤ Старт')
-        self.button_console = QPushButton('📜 Лог')
-        self.button_check = QPushButton('☑')  # ☐ - uncheck
+        self.button_start = QPushButton('Старт')
+        self.button_console = QPushButton('Лог')
+        self.button_check = QPushButton('+')  # - - uncheck
 
         self.stacked = PyQt5.QtWidgets.QStackedWidget()
         self.stacked.addWidget(self.table)
@@ -400,7 +400,7 @@ class Installer(QWidget):
             self.configurations_list.setEnabled(False)
             self.installation_path.setEnabled(False)
             self.button_start.setEnabled(False)
-            self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
+            self.button_browse.setText('Открыть (архив или base.txt)')
             self.button_browse.setEnabled(True)
             self.button_check.setEnabled(False)
             self.button_base.setEnabled(False)
@@ -413,7 +413,7 @@ class Installer(QWidget):
             self.installation_path.setEnabled(False)
             self.button_start.setEnabled(False)
             self.button_check.setEnabled(False)
-            self.button_browse.setText('❌ Отменить')
+            self.button_browse.setText('Отменить')
             self.button_browse.setEnabled(True)
             self.button_base.setEnabled(False)
             self.button_conf.setEnabled(False)
@@ -422,10 +422,10 @@ class Installer(QWidget):
 
         # Распакован архив
         elif self.state == Installer.State.PREPARED:
-            self.button_browse.setText('📂 Открыть (*.zip или base.txt)')
+            self.button_browse.setText('Открыть (архив или base.txt)')
             self.button_browse.setEnabled(True)
             self.button_check.setEnabled(False)
-            self.button_start.setText('➤ Старт')
+            self.button_start.setText('Старт')
             self.button_base.setEnabled(True)
             self.button_conf.setEnabled(False)
             self.button_do_verify.setEnabled(True)
@@ -450,7 +450,7 @@ class Installer(QWidget):
             self.button_do_verify.setEnabled(False)
             self.configurations_list.setEnabled(False)
             self.installation_path.setEnabled(False)
-            self.button_start.setText('❌ Стоп')
+            self.button_start.setText('Стоп')
             self.table.setEnabled(True)
 
         self.window_title_changed.emit()
@@ -524,7 +524,7 @@ class Installer(QWidget):
             options |= QFileDialog.DontUseNativeDialog
             file, _ = QFileDialog.getOpenFileName(self, 'Выберите дистрибутив или укажите '
                                                         'base.txt в распакованном дистрибутиве', default_browse_path,
-                                                  "Distributions (*.zip *.7z base.txt)",options=options)
+                                                  'Дистрибутив (*.zip *.7z *.tar.xz base.txt)', options=options)
             if not file:
                 self.state = Installer.State.DEFAULT
                 return
@@ -583,19 +583,19 @@ class Installer(QWidget):
 
     def on_clicked_button_console(self):
         if self.stacked.currentIndex() == 0:
-            self.button_console.setText('💻 Таблица')
+            self.button_console.setText('Таблица')
             self.stacked.setCurrentIndex(1)
         else:
-            self.button_console.setText('📜 Лог')
+            self.button_console.setText('Лог')
             self.stacked.setCurrentIndex(0)
 
     def on_clicked_button_check(self):
-        if self.button_check.text() == '☐':
-            self.button_check.setText('☑')
+        if self.button_check.text() == '-':
+            self.button_check.setText('+')
             for host in self.table.model().data.hosts:
                 host.checked = False
         else:
-            self.button_check.setText('☐')
+            self.button_check.setText('-')
             for host in self.table.model().data.hosts:
                 host.checked = True
         self.table_changed.emit()
@@ -1034,7 +1034,11 @@ class Installer(QWidget):
         if os.path.exists(unpack_to):
             logger.message_appeared.emit('--- Удаление дистрибутива, распакованного в прошлый раз')
             shutil.rmtree(unpack_to)
-        cmd = '7za.exe x "'+file+'" -aoa -o"'+unpack_to+'"'
+        if sys.platform == 'win32':
+            cmd = '7za.exe x "'+file+'" -aoa -o"'+unpack_to+'"'
+        else:
+            cmd = 'tar xJf "' + file + '"'  # "' + unpack_to + '"'
+        print(cmd)
         r = subprocess.run(cmd, shell=True)
         if r.returncode != 0:
             logger.message_appeared.emit('!!! Сбой при распаковке архива, архив битый?')
