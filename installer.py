@@ -1029,15 +1029,18 @@ class Installer(QWidget):
         pass
 
     def unpack_distribution(self, file):
-        unpack_to = os.path.splitext(file)[0]  # отрезаем расширение: .7z, .zip
+        unpack_to = os.path.splitext(file)[0]  # отрезаем расширение: .7z, .zip, .xz
+        if unpack_to.endswith('.tar'):
+            unpack_to = os.path.splitext(unpack_to)[0] # отрезаем ещё и .tar, если есть
         logger.message_appeared.emit('--- Каталог распаковки %s' % unpack_to)
         if os.path.exists(unpack_to):
             logger.message_appeared.emit('--- Удаление дистрибутива, распакованного в прошлый раз')
             shutil.rmtree(unpack_to)
+        os.makedirs(unpack_to)
         if sys.platform == 'win32':
             cmd = '7za.exe x "'+file+'" -aoa -o"'+unpack_to+'"'
         else:
-            cmd = 'tar xJf "' + file + '"'  # "' + unpack_to + '"'
+            cmd = 'tar xJvf "'+file+'" -C "'+unpack_to+'"'
         print(cmd)
         r = subprocess.run(cmd, shell=True)
         if r.returncode != 0:
