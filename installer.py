@@ -642,7 +642,9 @@ class Installer(QWidget):
 
         threading.Thread(target=timer).start()
 
+        #
         # ПРОЦЕСС 1 - АТОМАРНЫЙ - "Отстрел" процессов, запущенных из директории для установки
+        #
         if sys.platform == 'win32':
             if self.hostname != destination_host.hostname:
                 auth = ' /node:"%s" /user:"%s" /password:"%s"' \
@@ -671,8 +673,10 @@ class Installer(QWidget):
                     logger.message_appeared.emit('>>>' + cmd)
                     subprocess.run(cmd, shell=True)
 
-            # ПРОЦЕСС 2 - БЛОКИРУЮЩИЙ - Удаление файлов и каталогов из директории для установки
-
+        #
+        # ПРОЦЕСС 2 - БЛОКИРУЮЩИЙ - Удаление файлов и каталогов из директории для установки
+        #
+        if sys.platform == 'win32':
             if self.hostname != destination_host.hostname:
                 auth = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s ' \
                        % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
@@ -690,6 +694,11 @@ class Installer(QWidget):
             if self.stop:
                 return 'Принудительная остановка'
             self.remove_pid(r.pid)
+        else:
+            cmd = '[ -d "%s" ] && rm -rf "%s"' % (self.installation_path.text(), self.installation_path.text())
+            if destination_host.hostname != self.hostname and destination_host.hostname != 'localhost':
+                cmd = "ssh root@%s %s" % (destination_host.hostname, cmd)
+            subprocess.run(cmd, shell=True)
 
         # ПРОЦЕСС 3 - БЛОКИРУЮЩИЙ - Фактическое копирование файлов
 
@@ -719,16 +728,24 @@ class Installer(QWidget):
         robocopy_options = [r'/e', r'/mt:32', r'/r:0', r'/w:0']
         robocopy_options += [r'/np', r'/nfl', r'/njh', r'/njs', r'/ndl', r'/nc', r'/ns']  # silent
         if source_hostname:
-            cmd = ['PsExec64.exe', '-accepteula', '-nobanner', '\\\\' + source_hostname,
-                   '-u', Globals.samba_login, '-p', Globals.samba_password,
-                   'robocopy', source_path, r'\\%s\%s' % (destination_host.hostname,
-                                                          self.installation_path.text().strip().replace(':', '$'))] \
-                  + robocopy_options
+            if sys.platform == 'win32':
+                cmd = ['PsExec64.exe', '-accepteula', '-nobanner', '\\\\' + source_hostname,
+                       '-u', Globals.samba_login, '-p', Globals.samba_password,
+                       'robocopy', source_path, r'\\%s\%s' %
+                       (destination_host.hostname, self.installation_path.text().strip().replace(':', '$'))] \
+                      + robocopy_options
+            else:
+                cmd = ['rsync', '-a', '--delete', source_path+'/', "root@%s:%s" % (destination_host.hostname,
+                                                                               self.installation_path.text())]
         else:
-            cmd = ['robocopy'] + [source_path, '\\\\' + destination_host.hostname + '\\'
-                                  + self.installation_path.text().strip().replace(':', '$')] + robocopy_options
+            if sys.platform == 'win32':
+                cmd = ['robocopy'] + [source_path, '\\\\' + destination_host.hostname + '\\'
+                                      + self.installation_path.text().strip().replace(':', '$')] + robocopy_options
+            else:
+                cmd = ['rsync', '-a', '--delete', source_path+'/', self.installation_path.text()]
         logger.message_appeared.emit('>>> ' + ' '.join(cmd))
-        r = subprocess.Popen(cmd, shell=True)
+        r = subprocess.Popen(' '.join(cmd), shell=True)
+        print(r)
         self.pids.add(r.pid)
         r.wait()
         if self.stop:
@@ -750,23 +767,32 @@ class Installer(QWidget):
 
             def verify():
                 if self.hostname != destination_host.hostname:
-                    cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -f verify-base.exe' \
-                           % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
-                              self.installation_path.text())
+                    if sys.platform == 'win32':
+                        cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -f verify-base.exe' \
+                               % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
+                                  self.installation_path.text())
+                    else:
+                        cmd = ''
                 else:
-                    cmd = r'cd /d %s & %s' % (self.installation_path.text(),
-                        os.path.join(os.path.dirname(os.path.realpath(__file__)), 'verify-base.exe'))
+                    if sys.platform == 'win32':
+                        cmd = r'cd /d %s & %s' % (self.installation_path.text(),
+                            os.path.join(os.path.dirname(os.path.realpath(__file__)), 'verify-base.exe'))
+                    else:
+                        cmd = ''
                 logger.message_appeared.emit('>>> ' + cmd)
                 destination_host.md5_timer = 0
-                r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-                self.pids.add(r.pid)
-                if self.stop:
-                    return 'Принудительная остановка'
-                self.remove_pid(r.pid)
-                output = list(
-                    filter(None, [file.strip() for file in (r.communicate()[0]).decode(errors='ignore').split('\n')]))
-                logger.message_appeared.emit('<<< ' + str(r.returncode) + ' <<< ' + str(output))
-                return r.returncode, output
+                if sys.platform == 'win32':
+                    r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                    self.pids.add(r.pid)
+                    if self.stop:
+                        return 'Принудительная остановка'
+                    self.remove_pid(r.pid)
+                    output = list(
+                        filter(None, [file.strip() for file in (r.communicate()[0]).decode(errors='ignore').split('\n')]))
+                    logger.message_appeared.emit('<<< ' + str(r.returncode) + ' <<< ' + str(output))
+                    return r.returncode, output
+                else:
+                    return 0, []
 
             returncode, files_with_mismatched_md5 = verify()
             if returncode:
@@ -784,15 +810,29 @@ class Installer(QWidget):
     def do_copy_conf(self):
         def cp(full_path, base_for_relative_path, host):
             relative_path = os.path.relpath(full_path, base_for_relative_path)
-            remote_path = '\\\\'+host.hostname+'\\'+self.installation_path.text().replace(':', '$')+'\\'+relative_path
-            if os.path.exists(remote_path):
-                host.conf_counter_overwrite += 1
-            try:
-                os.makedirs(os.path.dirname(remote_path), exist_ok=True)
-                shutil.copyfile(full_path, remote_path)
-            except:
-                return False
-            host.conf_counter_total += 1
+            if sys.platform == 'win32':
+                remote_path = '\\\\'+host.hostname+'\\'+self.installation_path.text().replace(':', '$')+'\\'\
+                              +relative_path
+                if os.path.exists(remote_path):
+                    host.conf_counter_overwrite += 1
+                try:
+                    os.makedirs(os.path.dirname(remote_path), exist_ok=True)
+                    shutil.copyfile(full_path, remote_path)
+                except:
+                    return False
+                host.conf_counter_total += 1
+            else:
+                s = full_path
+                h = host.hostname
+                d = os.path.join(self.installation_path.text(), relative_path)
+                b = os.path.dirname(d)
+                if host.hostname == self.hostname or host.hostname == 'localhost':
+                    cmd = 'mkdir -p "%s" ; cp "%s" "%s"' % (b, s, d)
+                else:
+                    cmd = 'ssh root@%s "mkdir -p \"%s\"" ; scp "%s" root@%s:"%s"' % (h, d, s, h, d)
+                r = subprocess.run(cmd, shell=True)
+                if r.returncode:
+                    return False
             return True
         hosts = []  # Заполним хостами, на которые надо будет установить conf
         for host in [host for host in self.table.model().data.hosts if host.checked]:
@@ -820,11 +860,18 @@ class Installer(QWidget):
         self.worker_needed.emit()
 
     def do_run_post_script(self):
-        s = os.path.join(self.installation_path.text(), 'etc', 'post-install.bat')
+        s = os.path.join(self.installation_path.text(), 'etc', 'post-install')
+        if sys.platform == 'win32':
+            s += '.bat'
+        else:
+            s += '.sh'
         for host in [host for host in self.table.model().data.hosts if host.checked]:
             if host.state == Host.State.CONF_SUCCESS:
-                cmd = r'PsExec64.exe \\' + host.hostname + ' -u ' + Globals.samba_login + ' -p ' + Globals.samba_password \
-                      + ' ' + s
+                if sys.platform == 'win32':
+                    cmd = r'PsExec64.exe \\' + host.hostname + ' -u ' + Globals.samba_login + ' -p ' \
+                          + Globals.samba_password + ' ' + s
+                else:
+                    cmd = 'ssh root@%s %s' % (host.hostname, s)
                 r = subprocess.run(cmd, shell=True)
                 if r.returncode:
                     host.state = host.post_state = Host.State.FAILURE
@@ -897,7 +944,11 @@ class Installer(QWidget):
         # Выполнение post-скриптов
         s = os.path.join(self.distribution.configurations_dir,
                          self.configurations[self.configurations_list.currentIndex().row()],
-                         'common', 'etc', 'post-install.bat')
+                         'common', 'etc', 'post-install')
+        if sys.platform == 'win32':
+            s += '.bat'
+        else:
+            s += '.sh'
         is_prepare_script_used = False
         if os.path.exists(s):
             is_prepare_script_used = True
