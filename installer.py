@@ -282,8 +282,8 @@ class Installer(QWidget):
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setFocusPolicy(PyQt5.QtCore.Qt.NoFocus)  # Отключение выделения ячеек
         self.table.setSelectionMode(PyQt5.QtWidgets.QAbstractItemView.NoSelection)  # при нажатии
-        self.table.verticalHeader().setVisible(True)  # Отключение нумерации
-        self.table.horizontalHeader().setVisible(True)  # ячеек
+        self.table.verticalHeader().setVisible(False)  # Отключение нумерации
+        self.table.horizontalHeader().setVisible(False)  # ячеек
 
         self.configurations = []
         self.table_data_dict = {}
