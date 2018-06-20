@@ -370,7 +370,8 @@ class Installer(QWidget):
                 self.merge_hosts_from_discovered(helpers.discover_lan_hosts())
                 time.sleep(5)
 
-        threading.Thread(target=discover_lan_hosts).start()
+        if sys.platform == 'win32':
+            threading.Thread(target=discover_lan_hosts).start()
 
         def installation_timer():
             while True:
