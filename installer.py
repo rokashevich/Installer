@@ -99,6 +99,7 @@ class TableData:
         self.hosts.append(TableData.Host(hostname, checked))
         self.hosts.sort(key=lambda x: x.hostname)
 
+
 class TableModel(QAbstractTableModel):
     def __init__(self, parent=None):
         QAbstractTableModel.__init__(self, parent)
@@ -277,12 +278,12 @@ class Installer(QWidget):
         self.table.setModel(TableModel())
         self.table.setItemDelegateForColumn(0, FirstColumnDelegate(self))
         self.table.setItemDelegateForColumn(1, SecondColumnDelegate(self))
-        self.table.horizontalHeader().setSectionResizeMode(0, PyQt5.QtWidgets.QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, PyQt5.QtWidgets.QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(0, PyQt5.QtWidgets.QHeaderView.Stretch)
+        self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setFocusPolicy(PyQt5.QtCore.Qt.NoFocus)  # Отключение выделения ячеек
         self.table.setSelectionMode(PyQt5.QtWidgets.QAbstractItemView.NoSelection)  # при нажатии
-        self.table.verticalHeader().setVisible(False)  # Отключение нумерации
-        self.table.horizontalHeader().setVisible(False)  # ячеек
+        self.table.verticalHeader().setVisible(True)  # Отключение нумерации
+        self.table.horizontalHeader().setVisible(True)  # ячеек
 
         self.configurations = []
         self.table_data_dict = {}
