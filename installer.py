@@ -643,53 +643,53 @@ class Installer(QWidget):
         threading.Thread(target=timer).start()
 
         # ПРОЦЕСС 1 - АТОМАРНЫЙ - "Отстрел" процессов, запущенных из директории для установки
+        if sys.platform == 'win32':
+            if self.hostname != destination_host.hostname:
+                auth = ' /node:"%s" /user:"%s" /password:"%s"' \
+                       % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
+            else:
+                auth = ''
+            cmd = r'wmic%s process list full' % auth
+            logger.message_appeared.emit('>>> ' + cmd)
+            r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            processes = []
+            for line in list(filter(None, [line.strip() for line in r.stdout.decode(errors='ignore').splitlines()])):
+                if line.startswith('ExecutablePath='):
+                    processes.append([line.split('=')[1], None])
+                if line.startswith('Handle=') and not processes[-1][1]:
+                    processes[-1][1] = line.split('=')[1]
+            for process in processes:
+                path = process[0].lower()
+                if path.startswith(self.installation_path.text().lower()):
+                    pid = process[1]
+                    if self.hostname != destination_host.hostname:
+                        auth = ' /s %s /u %s /p %s' \
+                               % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
+                    else:
+                        auth = ''
+                    cmd = 'taskkill%s /t /f /pid %s' % (auth, pid)
+                    logger.message_appeared.emit('>>>' + cmd)
+                    subprocess.run(cmd, shell=True)
 
-        if self.hostname != destination_host.hostname:
-            auth = ' /node:"%s" /user:"%s" /password:"%s"' \
-                   % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
-        else:
-            auth = ''
-        cmd = r'wmic%s process list full' % auth
-        logger.message_appeared.emit('>>> ' + cmd)
-        r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        processes = []
-        for line in list(filter(None, [line.strip() for line in r.stdout.decode(errors='ignore').splitlines()])):
-            if line.startswith('ExecutablePath='):
-                processes.append([line.split('=')[1], None])
-            if line.startswith('Handle=') and not processes[-1][1]:
-                processes[-1][1] = line.split('=')[1]
-        for process in processes:
-            path = process[0].lower()
-            if path.startswith(self.installation_path.text().lower()):
-                pid = process[1]
-                if self.hostname != destination_host.hostname:
-                    auth = ' /s %s /u %s /p %s' \
-                           % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
-                else:
-                    auth = ''
-                cmd = 'taskkill%s /t /f /pid %s' % (auth, pid)
-                logger.message_appeared.emit('>>>' + cmd)
-                subprocess.run(cmd, shell=True)
+            # ПРОЦЕСС 2 - БЛОКИРУЮЩИЙ - Удаление файлов и каталогов из директории для установки
 
-        # ПРОЦЕСС 2 - БЛОКИРУЮЩИЙ - Удаление файлов и каталогов из директории для установки
-
-        if self.hostname != destination_host.hostname:
-            auth = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s ' \
-                   % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
-        else:
-            auth = ''
-        cmd = r'%scmd /c "if exist %s ( del /f/s/q %s > nul & rd /s/q %s )"' \
-              % (auth,
-                 self.installation_path.text(),
-                 self.installation_path.text(),
-                 self.installation_path.text())
-        logger.message_appeared.emit('>>> ' + cmd)
-        r = subprocess.Popen(cmd, shell=True)
-        self.pids.add(r.pid)
-        r.wait()
-        if self.stop:
-            return 'Принудительная остановка'
-        self.remove_pid(r.pid)
+            if self.hostname != destination_host.hostname:
+                auth = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s ' \
+                       % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
+            else:
+                auth = ''
+            cmd = r'%scmd /c "if exist %s ( del /f/s/q %s > nul & rd /s/q %s )"' \
+                  % (auth,
+                     self.installation_path.text(),
+                     self.installation_path.text(),
+                     self.installation_path.text())
+            logger.message_appeared.emit('>>> ' + cmd)
+            r = subprocess.Popen(cmd, shell=True)
+            self.pids.add(r.pid)
+            r.wait()
+            if self.stop:
+                return 'Принудительная остановка'
+            self.remove_pid(r.pid)
 
         # ПРОЦЕСС 3 - БЛОКИРУЮЩИЙ - Фактическое копирование файлов
 
