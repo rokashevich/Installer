@@ -705,103 +705,110 @@ class Installer(QWidget):
         source_hostname = source_host.hostname if source_host else None
         source_path = self.installation_path.text() if source_host else self.distribution.base
 
-        # https://ss64.com/nt/robocopy.html
-        # https://ss64.com/nt/robocopy-exit.html
-        # 16 ***FATAL ERROR***
-        # 15 FAIL MISM XTRA COPY
-        # 14 FAIL MISM XTRA
-        # 13 FAIL MISM COPY
-        # 12 FAIL MISM
-        # 11 FAIL XTRA COPY
-        # 10 FAIL XTRA
-        #  9 FAIL COPY
-        #  8 FAIL
-        #  7 MISM XTRA COPY OK
-        #  6 MISM XTRA OK
-        #  5 MISM COPY OK
-        #  4 MISM OK
-        #  3 XTRA COPY OK
-        #  2 XTRA OK
-        #  1 COPY OK
-        #  0 --no change--
-
-        robocopy_options = [r'/e', r'/mt:32', r'/r:0', r'/w:0']
-        robocopy_options += [r'/np', r'/nfl', r'/njh', r'/njs', r'/ndl', r'/nc', r'/ns']  # silent
-        if source_hostname:
+        if source_hostname:  # копирование с удалённого хоста на удалённый
             if sys.platform == 'win32':
-                cmd = ['PsExec64.exe', '-accepteula', '-nobanner', '\\\\' + source_hostname,
-                       '-u', Globals.samba_login, '-p', Globals.samba_password,
-                       'robocopy', source_path, r'\\%s\%s' %
-                       (destination_host.hostname, self.installation_path.text().strip().replace(':', '$'))] \
-                      + robocopy_options
+                cmd = 'PsExec64.exe -accepteula -nobanner \\\\' + source_hostname \
+                      + ' -u '+ Globals.samba_login + ' -p ' + Globals.samba_password + ' robocopy ' + source_path \
+                      + '\\\\%s\\%s' \
+                      % (destination_host.hostname, self.installation_path.text().strip().replace(':', '$')) \
+                      + r'/e /mt:32 /r:0 /w:0 /np /nfl /njh /njs /ndl /nc /ns'
             else:
-                cmd = ['rsync', '-a', '--delete', source_path+'/', "root@%s:%s" % (destination_host.hostname,
-                                                                               self.installation_path.text())]
-        else:
+                cmd = 'ssh root@%s "rsync -a --delete \"%s/\" root@%s:\"%s\""' \
+                      % (source_hostname,
+                         self.installation_path.text(),
+                         destination_host.hostname,
+                         self.installation_path.text())
+        else:  # самое первое копирование, с локального хоста на удалённый
             if sys.platform == 'win32':
-                cmd = ['robocopy'] + [source_path, '\\\\' + destination_host.hostname + '\\'
-                                      + self.installation_path.text().strip().replace(':', '$')] + robocopy_options
+                cmd = 'robocopy ' + source_path + ' \\\\' + destination_host.hostname \
+                      + ' \\\\' + self.installation_path.text().strip().replace(':', '$') \
+                      + r'/e /mt:32 /r:0 /w:0 /np /nfl /njh /njs /ndl /nc /ns'
             else:
-                cmd = ['rsync', '-a', '--delete', source_path+'/', self.installation_path.text()]
-        logger.message_appeared.emit('>>> ' + ' '.join(cmd))
-        r = subprocess.Popen(' '.join(cmd), shell=True)
-        print(r)
+                cmd = 'rsync -a --delete \"%s/\" root@%s:\"%s\"' \
+                      % (source_path, destination_host.hostname, self.installation_path.text())
+        logger.message_appeared.emit('>>> %s' % cmd)
+        r = subprocess.Popen(cmd, shell=True)
         self.pids.add(r.pid)
         r.wait()
         if self.stop:
             return 'Принудительная остановка'
         self.remove_pid(r.pid)
 
-        if r.returncode >= 8:
-            logger.message_appeared.emit('!!! %s: cmd: %s' % (destination_host.hostname, ' '.join(cmd)))
-            logger.message_appeared.emit('*** %s: returncode: %d' % (destination_host.hostname, r.returncode))
-            destination_host.state = Host.State.FAILURE
+        if sys.platform == 'win32':
+            # Проверяем код возврата robocopy, он сложнее чем, как обычно 0 - успех, 1 - ошибка, а именно:
+            #
+            # 16 ***FATAL ERROR***
+            # 15 FAIL MISM XTRA COPY
+            # 14 FAIL MISM XTRA
+            # 13 FAIL MISM COPY
+            # 12 FAIL MISM
+            # 11 FAIL XTRA COPY
+            # 10 FAIL XTRA
+            #  9 FAIL COPY
+            #  8 FAIL
+            #  7 MISM XTRA COPY OK
+            #  6 MISM XTRA OK
+            #  5 MISM COPY OK
+            #  4 MISM OK
+            #  3 XTRA COPY OK
+            #  2 XTRA OK
+            #  1 COPY OK
+            #  0 --no change--
+            #
+            # (Информация с сайтов: https://ss64.com/nt/robocopy.html, https://ss64.com/nt/robocopy-exit.html)
+            if r.returncode >= 8:
+                logger.message_appeared.emit('!!! %s: cmd: %s' % (destination_host.hostname, ' '.join(cmd)))
+                logger.message_appeared.emit('*** %s: returncode: %d' % (destination_host.hostname, r.returncode))
+                destination_host.state = Host.State.FAILURE
+            else:
+                if r.returncode != 1:
+                    logger.message_appeared.emit('!!! %s: команда: %s' % (destination_host.hostname, ' '.join(cmd)))
+                    logger.message_appeared.emit('!!! %s: код возврата: %d' % (destination_host.hostname, r.returncode))
         else:
-            if r.returncode != 1:
-                logger.message_appeared.emit('!!! %s: команда: %s' % (destination_host.hostname, ' '.join(cmd)))
-                logger.message_appeared.emit('!!! %s: код возврата: %d' % (destination_host.hostname, r.returncode))
+            if r.returncode != 0:
+                destination_host.state = Host.State.FAILURE
 
-            # БЛОКИРУЮЩИЙ ПРОЦЕСС 3 - Проверяем base.txt
+        # БЛОКИРУЮЩИЙ ПРОЦЕСС 3 - Проверяем base.txt
 
-            result = Host.State.BASE_SUCCESS
+        result = Host.State.BASE_SUCCESS
 
-            def verify():
-                if self.hostname != destination_host.hostname:
-                    if sys.platform == 'win32':
-                        cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -f verify-base.exe' \
-                               % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
-                                  self.installation_path.text())
-                    else:
-                        cmd = ''
-                else:
-                    if sys.platform == 'win32':
-                        cmd = r'cd /d %s & %s' % (self.installation_path.text(),
-                            os.path.join(os.path.dirname(os.path.realpath(__file__)), 'verify-base.exe'))
-                    else:
-                        cmd = ''
-                logger.message_appeared.emit('>>> ' + cmd)
-                destination_host.md5_timer = 0
+        def verify():
+            if self.hostname != destination_host.hostname:
                 if sys.platform == 'win32':
-                    r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-                    self.pids.add(r.pid)
-                    if self.stop:
-                        return 'Принудительная остановка'
-                    self.remove_pid(r.pid)
-                    output = list(
-                        filter(None, [file.strip() for file in (r.communicate()[0]).decode(errors='ignore').split('\n')]))
-                    logger.message_appeared.emit('<<< ' + str(r.returncode) + ' <<< ' + str(output))
-                    return r.returncode, output
+                    cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -f verify-base.exe' \
+                          % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
+                          self.installation_path.text())
                 else:
-                    return 0, []
+                    cmd = 'true'
+            else:
+                if sys.platform == 'win32':
+                    cmd = r'cd /d %s & %s' % (self.installation_path.text(),
+                          os.path.join(os.path.dirname(os.path.realpath(__file__)), 'verify-base.exe'))
+                else:
+                    cmd = 'true'
+            logger.message_appeared.emit('>>> ' + cmd)
+            destination_host.md5_timer = 0
+            if sys.platform == 'win32':
+                r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                self.pids.add(r.pid)
+                if self.stop:
+                    return 'Принудительная остановка'
+                self.remove_pid(r.pid)
+                output = list(
+                    filter(None, [file.strip() for file in (r.communicate()[0]).decode(errors='ignore').split('\n')]))
+                logger.message_appeared.emit('<<< ' + str(r.returncode) + ' <<< ' + str(output))
+                return r.returncode, output
+            else:
+                return 0, []
 
-            returncode, files_with_mismatched_md5 = verify()
-            if returncode:
-                if self.do_verify:
-                    result = Host.State.FAILURE
-                if files_with_mismatched_md5:
-                    for file in files_with_mismatched_md5:
-                        logger.message_appeared.emit('!!! %s: ошибка md5: %s' % (destination_host.hostname, file))
-            destination_host.state = result
+        returncode, files_with_mismatched_md5 = verify()
+        if returncode:
+            if self.do_verify:
+                result = Host.State.FAILURE
+            if files_with_mismatched_md5:
+                for file in files_with_mismatched_md5:
+                    logger.message_appeared.emit('!!! %s: ошибка md5: %s' % (destination_host.hostname, file))
+        destination_host.state = result
 
         if source_host:
             source_host.state = Host.State.BASE_SUCCESS
@@ -809,7 +816,7 @@ class Installer(QWidget):
 
     def do_copy_conf(self):
         def cp(full_path, base_for_relative_path, host):
-            relative_path = os.path.relpath(full_path, base_for_relative_path)
+            relative_path = os.path.relpath(full_path, base_for_relative_path)  # например: etc/iup.xml
             if sys.platform == 'win32':
                 remote_path = '\\\\'+host.hostname+'\\'+self.installation_path.text().replace(':', '$')+'\\'\
                               +relative_path
@@ -822,14 +829,14 @@ class Installer(QWidget):
                     return False
                 host.conf_counter_total += 1
             else:
-                s = full_path
-                h = host.hostname
-                d = os.path.join(self.installation_path.text(), relative_path)
-                b = os.path.dirname(d)
-                if host.hostname == self.hostname or host.hostname == 'localhost':
-                    cmd = 'mkdir -p "%s" ; cp "%s" "%s"' % (b, s, d)
-                else:
-                    cmd = 'ssh root@%s "mkdir -p \"%s\"" ; scp "%s" root@%s:"%s"' % (h, d, s, h, d)
+                remote_path = os.path.join(self.installation_path.text(), relative_path)
+                cmd = 'ssh root@%s "mkdir -p \"%s\""; scp "%s" root@%s:"%s"' \
+                      % (host.hostname,
+                         os.path.dirname(remote_path),
+                         full_path,
+                         host.hostname,
+                         remote_path)
+                logger.message_appeared.emit('>>> %s' % cmd)
                 r = subprocess.run(cmd, shell=True)
                 if r.returncode:
                     return False
