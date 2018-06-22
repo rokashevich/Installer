@@ -878,7 +878,7 @@ class Installer(QWidget):
                     cmd = r'PsExec64.exe \\' + host.hostname + ' -u ' + Globals.samba_login + ' -p ' \
                           + Globals.samba_password + ' ' + s
                 else:
-                    cmd = 'ssh root@%s %s' % (host.hostname, s)
+                    cmd = 'ssh root@%s "%s"' % (host.hostname, s)
                 r = subprocess.run(cmd, shell=True)
                 if r.returncode:
                     host.state = host.post_state = Host.State.FAILURE
@@ -963,12 +963,10 @@ class Installer(QWidget):
                 if host.state == Host.State.CONF_SUCCESS:
                     threading.Thread(target=self.do_run_post_script).start()
                     return
-
         success_state = Host.State.BASE_SUCCESS
         if is_prepare_script_used:
             success_state = Host.State.POST_SUCCESS
-        elif (self.configurations_list.currentIndex().row() >= 0
-                and self.configurations_list.currentIndex().row() < self.configurations_list.model().rowCount() - 2):
+        else:
             success_state = Host.State.CONF_SUCCESS
 
         for host in [host for host in self.table.model().data.hosts if host.checked]:
@@ -1001,17 +999,19 @@ class Installer(QWidget):
         logger.message_appeared.emit('--- Открываем ' + uri)
 
         self.distribution = Installer.Distribution(uri)
+
         self.prepare_message = ''
         self.prepare_process_download = None
         self.configurations.clear()
         self.table_data_dict.clear()
-        self.configurations_list.setModel(None)
+        #self.configurations_list.setModel(None) #TODO
         self.post_install_scripts_dict.clear()
+
         self.state_changed.emit()
 
         if uri.endswith('base.txt'):  # указали на уже распакованный дистрибутив
             base_txt = uri
-        else:  # выбрали файл-архив
+        else:  # выбрали файл дистрибутива
             unpack_to = self.unpack_distribution(uri)
             base_txt_1 = os.path.join(unpack_to, 'base', 'base.txt')
             base_txt_2 = os.path.join(unpack_to, 'base.txt')
@@ -1088,20 +1088,22 @@ class Installer(QWidget):
     def prepare_distribution_stop(self):
         pass
 
-    def unpack_distribution(self, file):
+    @staticmethod
+    def unpack_distribution(file):
         unpack_to = os.path.splitext(file)[0]  # отрезаем расширение: .7z, .zip, .xz
         if unpack_to.endswith('.tar'):
             unpack_to = os.path.splitext(unpack_to)[0] # отрезаем ещё и .tar, если есть
+
         logger.message_appeared.emit('--- Каталог распаковки %s' % unpack_to)
         if os.path.exists(unpack_to):
-            logger.message_appeared.emit('--- Удаление дистрибутива, распакованного в прошлый раз')
+            logger.message_appeared.emit('--- Удаление каталога распаковки')
             shutil.rmtree(unpack_to)
         os.makedirs(unpack_to)
         if sys.platform == 'win32':
             cmd = '7za.exe x "'+file+'" -aoa -o"'+unpack_to+'"'
         else:
-            cmd = 'tar xJvf "'+file+'" -C "'+unpack_to+'"'
-        print(cmd)
+            cmd = 'tar xJvf "'+file+'" -C "'+unpack_to+'" > /dev/null'
+        logger.message_appeared.emit('>>> %s' % cmd)
         r = subprocess.run(cmd, shell=True)
         if r.returncode != 0:
             logger.message_appeared.emit('!!! Сбой при распаковке архива, архив битый?')
@@ -1122,7 +1124,7 @@ class Installer(QWidget):
 
         title += ' • Дистрибутив: ' + self.distribution.name
 
-        if self.distribution.uri.endswith('.zip'):
+        if self.distribution.uri.endswith('.zip') or self.distribution.uri.endswith('.tar.xz'):
             title += ' (распакован за %s' % helpers.seconds_to_human(self.distribution.prepare_timer)
         else:
             title += ' (без распаковки'
