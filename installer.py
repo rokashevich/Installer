@@ -640,6 +640,7 @@ class Installer(QWidget):
                 else:
                     destination_host.base_timer += 1
 
+        destination_host.base_timer = 0
         threading.Thread(target=timer).start()
 
         #
