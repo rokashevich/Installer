@@ -643,9 +643,7 @@ class Installer(QWidget):
         destination_host.base_timer = 0
         threading.Thread(target=timer).start()
 
-        #
-        # ПРОЦЕСС 1 - АТОМАРНЫЙ - "Отстрел" процессов, запущенных из директории для установки
-        #
+        # Шаг 0 (Только Win32): "Отстрел" процессов, запущенных из директории для установки.
         if sys.platform == 'win32':
             if self.hostname != destination_host.hostname:
                 auth = ' /node:"%s" /user:"%s" /password:"%s"' \
@@ -674,9 +672,7 @@ class Installer(QWidget):
                     logger.message_appeared.emit('>>>' + cmd)
                     subprocess.run(cmd, shell=True)
 
-        #
-        # ПРОЦЕСС 2 - БЛОКИРУЮЩИЙ - Удаление файлов и каталогов из директории для установки
-        #
+        # Шаг 1: Удаление существующего каталога установки (если есть).
         if sys.platform == 'win32':
             if self.hostname != destination_host.hostname:
                 auth = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s ' \
@@ -696,13 +692,11 @@ class Installer(QWidget):
                 return 'Принудительная остановка'
             self.remove_pid(r.pid)
         else:
-            cmd = '[ -d "%s" ] && rm -rf "%s"' % (self.installation_path.text(), self.installation_path.text())
-            if destination_host.hostname != self.hostname and destination_host.hostname != 'localhost':
-                cmd = "ssh root@%s %s" % (destination_host.hostname, cmd)
+            cmd = 'ssh root@%s "[ -d \"%s\" ] && rm -rf \"%s\""' \
+                  % (destination_host.hostname, self.installation_path.text(), self.installation_path.text())
             subprocess.run(cmd, shell=True)
 
-        # ПРОЦЕСС 3 - БЛОКИРУЮЩИЙ - Фактическое копирование файлов
-
+        # Шаг 2: Копирование base.
         source_hostname = source_host.hostname if source_host else None
         source_path = self.installation_path.text() if source_host else self.distribution.base
 
@@ -769,40 +763,38 @@ class Installer(QWidget):
             if r.returncode != 0:
                 destination_host.state = Host.State.FAILURE
 
-        # БЛОКИРУЮЩИЙ ПРОЦЕСС 3 - Проверяем base.txt
-
+        # Шаг 3: проверка md5 по base.txt.
         result = Host.State.BASE_SUCCESS
-
-        def verify():
+        if sys.platform == 'win32':
             if self.hostname != destination_host.hostname:
-                if sys.platform == 'win32':
-                    cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -f verify-base.exe' \
-                          % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
-                          self.installation_path.text())
-                else:
-                    cmd = 'true'
+                cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -f verify-base.exe' \
+                      % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
+                         self.installation_path.text())
             else:
-                if sys.platform == 'win32':
-                    cmd = r'cd /d %s & %s' % (self.installation_path.text(),
-                          os.path.join(os.path.dirname(os.path.realpath(__file__)), 'verify-base.exe'))
-                else:
-                    cmd = 'true'
+                cmd = r'cd /d %s & %s' % (self.installation_path.text(),
+                                          os.path.join(os.path.dirname(os.path.realpath(__file__)), 'verify-base.exe'))
             logger.message_appeared.emit('>>> ' + cmd)
             destination_host.md5_timer = 0
-            if sys.platform == 'win32':
-                r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-                self.pids.add(r.pid)
-                if self.stop:
-                    return 'Принудительная остановка'
-                self.remove_pid(r.pid)
-                output = list(
-                    filter(None, [file.strip() for file in (r.communicate()[0]).decode(errors='ignore').split('\n')]))
-                logger.message_appeared.emit('<<< ' + str(r.returncode) + ' <<< ' + str(output))
-                return r.returncode, output
-            else:
-                return 0, []
-
-        returncode, files_with_mismatched_md5 = verify()
+            r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            returncode = r.returncode
+            files_with_mismatched_md5 = list(
+                filter(None, [file.strip() for file in (r.communicate()[0]).decode(errors='ignore').split('\n')]))
+        else:
+            cmd = 'scp %s root@%s:%s' \
+                  % (os.path.join(os.path.dirname(os.path.realpath(__file__)), 'verify-base'),
+                     destination_host.hostname, self.installation_path.text())
+            logger.message_appeared.emit('>>> ' + cmd)
+            subprocess.run(cmd, shell=True)
+            cmd = 'ssh root@%s "cd \"%s\";chmod +x verify-base;./verify-base"' % (destination_host.hostname, self.installation_path.text())
+            logger.message_appeared.emit('>>> ' + cmd)
+            r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            stdout = (r.communicate()[0]).decode(errors='ignore')
+            returncode = r.returncode
+            files_with_mismatched_md5 = list(
+                filter(None, [file.strip() for file in stdout.split('\n')]))
+            cmd = 'ssh root@%s rm "%s/verify-base"' % (destination_host.hostname, self.installation_path.text())
+            logger.message_appeared.emit('>>> ' + cmd)
+            subprocess.run(cmd, shell=True)
         if returncode:
             if self.do_verify:
                 result = Host.State.FAILURE
@@ -810,7 +802,6 @@ class Installer(QWidget):
                 for file in files_with_mismatched_md5:
                     logger.message_appeared.emit('!!! %s: ошибка md5: %s' % (destination_host.hostname, file))
         destination_host.state = result
-
         if source_host:
             source_host.state = Host.State.BASE_SUCCESS
         self.worker_needed.emit()
