@@ -278,7 +278,7 @@ class Installer(QWidget):
         self.table.setModel(TableModel())
         self.table.setItemDelegateForColumn(0, FirstColumnDelegate(self))
         self.table.setItemDelegateForColumn(1, SecondColumnDelegate(self))
-        self.table.horizontalHeader().setSectionResizeMode(0, PyQt5.QtWidgets.QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(0, PyQt5.QtWidgets.QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setFocusPolicy(PyQt5.QtCore.Qt.NoFocus)  # Отключение выделения ячеек
         self.table.setSelectionMode(PyQt5.QtWidgets.QAbstractItemView.NoSelection)  # при нажатии
