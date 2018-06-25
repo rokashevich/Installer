@@ -702,11 +702,8 @@ class Installer(QWidget):
 
         if source_hostname:  # копирование с удалённого хоста на удалённый
             if sys.platform == 'win32':
-                cmd = 'PsExec64.exe -accepteula -nobanner \\\\' + source_hostname \
-                      + ' -u '+ Globals.samba_login + ' -p ' + Globals.samba_password + ' robocopy ' + source_path \
-                      + '\\\\%s\\%s' \
-                      % (destination_host.hostname, self.installation_path.text().strip().replace(':', '$')) \
-                      + r'/e /mt:32 /r:0 /w:0 /np /nfl /njh /njs /ndl /nc /ns'
+                cmd = 'PsExec64.exe -accepteula -nobanner \\\\%s -u %s -p %s robocopy %s \\\\%s\\%s /e /mt:32 /r:0 /w:0 /np /nfl /njh /njs /ndl /nc /ns' \
+                      % (source_hostname, Globals.samba_login, Globals.samba_password, source_path, destination_host.hostname, self.installation_path.text().strip().replace(':', '$'))
             else:
                 cmd = 'ssh root@%s "rsync -a --delete \"%s/\" root@%s:\"%s\""' \
                       % (source_hostname,
@@ -715,9 +712,8 @@ class Installer(QWidget):
                          self.installation_path.text())
         else:  # самое первое копирование, с локального хоста на удалённый
             if sys.platform == 'win32':
-                cmd = 'robocopy ' + source_path + ' \\\\' + destination_host.hostname \
-                      + ' \\\\' + self.installation_path.text().strip().replace(':', '$') \
-                      + r'/e /mt:32 /r:0 /w:0 /np /nfl /njh /njs /ndl /nc /ns'
+                cmd = 'robocopy "%s" "\\\\%s\\%s" /e /mt:32 /r:0 /w:0 /np /nfl /njh /njs /ndl /nc /ns' \
+                % (source_path, destination_host.hostname, self.installation_path.text().strip().replace(':', '$'))
             else:
                 cmd = 'rsync -a --delete \"%s/\" root@%s:\"%s\"' \
                       % (source_path, destination_host.hostname, self.installation_path.text())
