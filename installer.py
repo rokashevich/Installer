@@ -692,7 +692,7 @@ class Installer(QWidget):
                 return 'Принудительная остановка'
             self.remove_pid(r.pid)
         else:
-            cmd = 'ssh root@%s "[ -d \"%s\" ] && rm -rf \"%s\""' \
+            cmd = 'ssh root@%s "rm -rf \"%s\" ; mkdir -p \"%s\""' \
                   % (destination_host.hostname, self.installation_path.text(), self.installation_path.text())
             subprocess.run(cmd, shell=True)
 
