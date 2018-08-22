@@ -10,6 +10,7 @@ import glob
 import re
 import time
 import shutil
+import random
 import zipfile
 import threading
 import subprocess
@@ -260,10 +261,6 @@ class Installer(QWidget):
 
         self.version = open('version.txt').read() if os.path.exists('version.txt') else 'DEV'
 
-        self.log_file = os.path.join('var', 'log', '%s.txt' % datetime.datetime.now().strftime("%Y-%m-%d-%H%M"))
-        if not os.path.exists(os.path.dirname(self.log_file)):
-            os.makedirs(os.path.dirname(self.log_file))
-
         self.console = PyQt5.QtWidgets.QTextBrowser()
 
         self.post_install_scripts_dict = {}
@@ -307,7 +304,10 @@ class Installer(QWidget):
 
         self.button_start = QPushButton('Старт')
         self.button_console = QPushButton('Лог')
-        self.button_check = QPushButton('+')  # - - uncheck
+        self.button_check = QPushButton()
+        self.button_check.setIcon(QIcon('images//check.png'))
+        self.button_check_toggle = True
+
 
         self.stacked = PyQt5.QtWidgets.QStackedWidget()
         self.stacked.addWidget(self.table)
@@ -386,13 +386,12 @@ class Installer(QWidget):
 
     def on_message_appeared(self, message):
         s = '%s %s' % (datetime.datetime.now().strftime("%H:%M:%S"), message)
-        try:
-            codecs.open(self.log_file, 'a', 'utf-8').write(s + os.linesep)
-        except:
-            self.console.append('Ошибка записи в лог!')
-        print(s)
-        if not message.startswith('>>> ') and not message.startswith('<<< '):
+        if (message.startswith('--- ') 
+                or message.startswith('!!! ')
+                or message.startswith('*** ')):
             self.console.append(s)
+        else:
+            print(s)
 
     def on_table_changed(self):
         self.table.model().updateTable()
@@ -592,14 +591,13 @@ class Installer(QWidget):
             self.stacked.setCurrentIndex(0)
 
     def on_clicked_button_check(self):
-        if self.button_check.text() == '-':
-            self.button_check.setText('+')
-            for host in self.table.model().data.hosts:
-                host.checked = False
-        else:
-            self.button_check.setText('-')
+        if self.button_check_toggle:
             for host in self.table.model().data.hosts:
                 host.checked = True
+        else:
+            for host in self.table.model().data.hosts:
+                host.checked = False
+        self.button_check_toggle = not self.button_check_toggle
         self.table_changed.emit()
 
     def on_clicked_button_base(self):
@@ -675,22 +673,27 @@ class Installer(QWidget):
         # Шаг 1: Удаление существующего каталога установки (если есть).
         if sys.platform == 'win32':
             if self.hostname != destination_host.hostname:
-                auth = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s ' \
+                auth = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -c ' \
                        % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
             else:
                 auth = ''
-            cmd = r'%scmd /c "if exist %s ( del /f/s/q %s > nul & rd /s/q %s )"' \
+            cmd = r'%srm.exe "%s"' \
                   % (auth,
-                     self.installation_path.text(),
-                     self.installation_path.text(),
                      self.installation_path.text())
-            logger.message_appeared.emit('>>> ' + cmd)
+            logger.message_appeared.emit('>>> %s' % cmd)
             r = subprocess.Popen(cmd, shell=True)
             self.pids.add(r.pid)
             r.wait()
             if self.stop:
-                return 'Принудительная остановка'
+                return
             self.remove_pid(r.pid)
+            if r.returncode != 0:
+                logger.message_appeared.emit('*** На %s не удалось удалить %s' % (destination_host.hostname, self.installation_path.text()))
+                if source_host:
+                    source_host.state = Host.State.BASE_SUCCESS
+                destination_host.state = Host.State.FAILURE
+                self.worker_needed.emit()
+                return
         else:
             cmd = 'ssh root@%s "rm -rf \"%s\" ; mkdir -p \"%s\""' \
                   % (destination_host.hostname, self.installation_path.text(), self.installation_path.text())
@@ -702,7 +705,7 @@ class Installer(QWidget):
 
         if source_hostname:  # копирование с удалённого хоста на удалённый
             if sys.platform == 'win32':
-                cmd = 'PsExec64.exe -accepteula -nobanner \\\\%s -u %s -p %s robocopy %s \\\\%s\\%s /e /mt:32 /r:0 /w:0 /np /nfl /njh /njs /ndl /nc /ns' \
+                cmd = 'PsExec64.exe -accepteula -nobanner \\\\%s -u %s -p %s robocopy %s \\\\%s\\%s /e /mt:32 /r:0 /w:0 /np /nfl /njh /njs /ndl /nc /ns > nul 2>&1' \
                       % (source_hostname, Globals.samba_login, Globals.samba_password, source_path, destination_host.hostname, self.installation_path.text().strip().replace(':', '$'))
             else:
                 cmd = 'ssh root@%s "rsync -a --delete \"%s/\" root@%s:\"%s\""' \
@@ -712,7 +715,7 @@ class Installer(QWidget):
                          self.installation_path.text())
         else:  # самое первое копирование, с локального хоста на удалённый
             if sys.platform == 'win32':
-                cmd = 'robocopy "%s" "\\\\%s\\%s" /e /mt:32 /r:0 /w:0 /np /nfl /njh /njs /ndl /nc /ns' \
+                cmd = 'robocopy "%s" "\\\\%s\\%s" /e /mt:32 /r:0 /w:0 /np /nfl /njh /njs /ndl /nc /ns > nul 2>&1' \
                 % (source_path, destination_host.hostname, self.installation_path.text().strip().replace(':', '$'))
             else:
                 cmd = 'rsync -a --delete \"%s/\" root@%s:\"%s\"' \
@@ -726,35 +729,14 @@ class Installer(QWidget):
         self.remove_pid(r.pid)
 
         if sys.platform == 'win32':
-            # Проверяем код возврата robocopy, он сложнее чем, как обычно 0 - успех, 1 - ошибка, а именно:
-            #
-            # 16 ***FATAL ERROR***
-            # 15 FAIL MISM XTRA COPY
-            # 14 FAIL MISM XTRA
-            # 13 FAIL MISM COPY
-            # 12 FAIL MISM
-            # 11 FAIL XTRA COPY
-            # 10 FAIL XTRA
-            #  9 FAIL COPY
-            #  8 FAIL
-            #  7 MISM XTRA COPY OK
-            #  6 MISM XTRA OK
-            #  5 MISM COPY OK
-            #  4 MISM OK
-            #  3 XTRA COPY OK
-            #  2 XTRA OK
-            #  1 COPY OK
-            #  0 --no change--
-            #
-            # (Информация с сайтов: https://ss64.com/nt/robocopy.html, https://ss64.com/nt/robocopy-exit.html)
-            if r.returncode >= 8:
-                logger.message_appeared.emit('!!! %s: cmd: %s' % (destination_host.hostname, ' '.join(cmd)))
-                logger.message_appeared.emit('*** %s: returncode: %d' % (destination_host.hostname, r.returncode))
+            if r.returncode != 1:
+                logger.message_appeared.emit('*** Ошибка robocopy с %s на %s. Команда для воспроизведения: %s' 
+                                             % (source_host.hostname, destination_host.hostname, cmd))
+                if source_host:
+                    source_host.state = Host.State.BASE_SUCCESS
                 destination_host.state = Host.State.FAILURE
-            else:
-                if r.returncode != 1:
-                    logger.message_appeared.emit('!!! %s: команда: %s' % (destination_host.hostname, ' '.join(cmd)))
-                    logger.message_appeared.emit('!!! %s: код возврата: %d' % (destination_host.hostname, r.returncode))
+                self.worker_needed.emit()
+                return
         else:
             if r.returncode != 0:
                 destination_host.state = Host.State.FAILURE
@@ -866,7 +848,7 @@ class Installer(QWidget):
                     cmd = r'PsExec64.exe \\' + host.hostname + ' -u ' + Globals.samba_login + ' -p ' \
                           + Globals.samba_password + ' ' + s
                 else:
-                    cmd = 'ssh root@%s "%s"' % (host.hostname, s)
+                    cmd = 'ssh root@%s "chmod +x \"%s\" ; \"%s\""' % (host.hostname, s, s)
                 r = subprocess.run(cmd, shell=True)
                 if r.returncode:
                     host.state = host.post_state = Host.State.FAILURE
@@ -889,15 +871,18 @@ class Installer(QWidget):
         for source_host in [host for host in self.table.model().data.hosts if host.checked]:
             if source_host.state == Host.State.BASE_SUCCESS:
                 have_source_host = True
+                possible_destination_hosts = []
                 for destination_host in [host for host in self.table.model().data.hosts if host.checked]:
                     if destination_host.state == Host.State.QUEUED:
-                        source_host.state = Host.State.BASE_INSTALLING_SOURCE
-                        destination_host.state = Host.State.BASE_INSTALLING_DESTINATION
-                        logger.message_appeared.emit('--- Копирование base: %s -> %s' % (source_host.hostname,
-                                                                                         destination_host.hostname))
-                        threading.Thread(target=self.do_copy_base, args=(source_host, destination_host)).start()
-                        any_base_copy_started = True
-                        break
+                        possible_destination_hosts.append(destination_host)
+                if possible_destination_hosts:
+                    destination_host = random.choice(possible_destination_hosts)
+                    source_host.state = Host.State.BASE_INSTALLING_SOURCE
+                    destination_host.state = Host.State.BASE_INSTALLING_DESTINATION
+                    logger.message_appeared.emit('--- Копирование base: %s -> %s' % (source_host.hostname,
+                                                                                     destination_host.hostname))
+                    threading.Thread(target=self.do_copy_base, args=(source_host, destination_host)).start()
+                    any_base_copy_started = True
         if not have_source_host:  # Нет source-хоста но возможно уже запущенно какое-то копирование
             for host in [host for host in self.table.model().data.hosts if host.checked]:
                 if host.state == Host.State.BASE_INSTALLING_DESTINATION:

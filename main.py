@@ -23,5 +23,5 @@ if __name__ == '__main__':
     screen_width = screen_geometry.width()
     ex.setGeometry(200, 75, screen_width - 400, screen_height - 150)
 
-    ex.setWindowIcon(QIcon('installer.png'))
+    ex.setWindowIcon(QIcon('installer.ico'))
     sys.exit(app.exec_())
