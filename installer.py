@@ -1,7 +1,5 @@
 # encoding: utf-8
 
-# https://www.utf8icons.com/
-
 import codecs
 import datetime
 import os
@@ -24,22 +22,11 @@ from PyQt5.QtWidgets import (QApplication, QLineEdit, QHBoxLayout, QVBoxLayout, 
                              QPushButton, QLabel, QGridLayout, QTreeView, QItemDelegate, QComboBox,
                              QStyleOptionComboBox, QStyle, QFileDialog)
 from PyQt5.QtGui import QFont, QIcon
-from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSignal, pyqtSlot, QCoreApplication, QSettings
+from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSignal, pyqtSlot, QCoreApplication, QSettings, QSize
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import helpers
 from globals import Globals
-
-
-class Logger(PyQt5.QtCore.QObject):
-    message_appeared = pyqtSignal(str)
-
-    def __init__(self):
-        super().__init__()
-
-
-logger = Logger()
-
 
 class Host:
     class State(Enum):
@@ -153,10 +140,10 @@ class Installer(QWidget):
     class Distribution:
 
         def __init__(self, uri):
-            self.uri = uri  # zip-дистрибутив или base.txt
-            self.base_txt = ''  # Полный путь к base.txt
+            self.uri = uri  # zip-дистрибутив или base*.txt
+            self.base_txt = ''  # Полный путь к base*.txt
             self.configurations_dir = ''  # Полный путь к распакованному директории conf
-            self.name = ''  # Имя дистрибутива, например su30mki_skytech_develop_5420_conf_1991_skytech_0.14.12.5.383
+            self.name = ''  # Имя дистрибутива
             self.base = ''
             self.size = 0
             self.prepare_timer = 0
@@ -259,9 +246,7 @@ class Installer(QWidget):
 
         super().__init__()
 
-        self.version = open('version.txt').read() if os.path.exists('version.txt') else 'DEV'
-
-        self.console = PyQt5.QtWidgets.QTextBrowser()
+        self.version = open('version.txt').read().rstrip() if os.path.exists('version.txt') else 'DEV'
 
         self.post_install_scripts_dict = {}
 
@@ -290,28 +275,28 @@ class Installer(QWidget):
 
         self.copy_conf_in_progress = False
 
+        self.patch_mode = False
+
         self.button_browse = QPushButton()
         self.configurations_list = PyQt5.QtWidgets.QListView()
         self.installation_path = QLineEdit()
+
         self.button_base = QPushButton()
         self.button_base.setIcon(QIcon('images//base.png'))
+        self.button_base.setIconSize(QSize(16,16))
         self.button_conf = QPushButton()
         self.button_conf.setIcon(QIcon('images//conf.png'))
+        self.button_conf.setIconSize(QSize(16,16))
         self.button_do_verify = QPushButton()
         self.button_do_verify.setIcon(QIcon('images//do_verify_true.png'))
+        self.button_do_verify.setIconSize(QSize(16,16))
         self.button_about = QPushButton()
         self.button_about.setIcon(QIcon('images//about.png'))
-
+        self.button_about.setIconSize(QSize(16,16))
         self.button_start = QPushButton('Старт')
-        self.button_console = QPushButton('Лог')
-        self.button_check = QPushButton()
-        self.button_check.setIcon(QIcon('images//check.png'))
-        self.button_check_toggle = True
-
-
-        self.stacked = PyQt5.QtWidgets.QStackedWidget()
-        self.stacked.addWidget(self.table)
-        self.stacked.addWidget(self.console)
+        self.button_log = QPushButton()
+        self.button_log.setIcon(QIcon('images//log.png'))
+        self.button_log.setIconSize(QSize(16,16))
 
         gl = QGridLayout(self)
 
@@ -321,32 +306,26 @@ class Installer(QWidget):
 
         gl.addWidget(self.button_browse,              0, 0, 1, 1)  #
         gl.addWidget(self.button_start,               0, 1, 1, 1)  # Верхний ряд кнопок
-        gl.addWidget(self.button_console,             0, 2, 1, 1)  #
-        gl.addWidget(self.button_check,               0, 3, 1, 1)  #
-        gl.addWidget(self.button_base,                0, 4, 1, 1)  #
-        gl.addWidget(self.button_conf,                0, 5, 1, 1)  #
-        gl.addWidget(self.button_do_verify,           0, 6, 1, 1)  #
-        gl.addWidget(self.button_about,               0, 7, 1, 1)  #
+        gl.addWidget(self.button_base,                0, 2, 1, 1)  #
+        gl.addWidget(self.button_conf,                0, 3, 1, 1)  #
+        gl.addWidget(self.button_do_verify,           0, 4, 1, 1)  #
+        gl.addWidget(self.button_about,               0, 5, 1, 1)  #
+        gl.addWidget(self.button_log,                 0, 6, 1, 1)  #
 
-        gl.addWidget(self.configurations_list,        1, 0, 1, 8)  #
-        gl.addWidget(self.installation_path,          2, 0, 1, 8)  # Элементы друг над другом
+        gl.addWidget(self.configurations_list,        1, 0, 1, 7)  #
+        gl.addWidget(self.installation_path,          2, 0, 1, 7)  # Элементы друг над другом
 
-        gl.addWidget(self.stacked,                    0, 8, -1, 1)  # Контейнер: консоль или лог
+        gl.addWidget(self.table,                      0, 7, -1, 1)  # Контейнер: консоль или лог
 
         self.setLayout(gl)
 
         self.window_title_changed.emit()
 
-        # Стилизация
-        # Документация по стилизации Qt: http://doc.qt.io/qt-5/stylesheet-reference.html
-        self.console.setStyleSheet("font-family: Consolas")
-
         self.show()
 
         self.button_browse.clicked.connect(self.on_clicked_button_browse)
         self.button_start.clicked.connect(self.on_clicked_button_start)
-        self.button_console.clicked.connect(self.on_clicked_button_console)
-        self.button_check.clicked.connect(self.on_clicked_button_check)
+        self.button_log.clicked.connect(helpers.Logger.show)
         self.button_base.clicked.connect(self.on_clicked_button_base)
         self.button_conf.clicked.connect(self.on_clicked_button_conf)
         self.button_do_verify.clicked.connect(self.on_clicked_button_do_verify)
@@ -357,21 +336,10 @@ class Installer(QWidget):
         self.worker_needed.connect(self.worker)
         self.window_title_changed.connect(self.on_title_changed)
         self.installation_path.textChanged.connect(self.on_installation_path_changed)
-        logger.message_appeared.connect(self.on_message_appeared)
 
         self.state = Installer.State.DEFAULT
         self.state_changed.emit()
         self.window_title_changed.emit()
-
-        def discover_lan_hosts():
-            while True:
-                if not threading.main_thread().is_alive():
-                    return
-                self.merge_hosts_from_discovered(helpers.discover_lan_hosts())
-                time.sleep(5)
-
-        if sys.platform == 'win32':
-            threading.Thread(target=discover_lan_hosts).start()
 
         def installation_timer():
             while True:
@@ -384,15 +352,6 @@ class Installer(QWidget):
 
         threading.Thread(target=installation_timer).start()
 
-    def on_message_appeared(self, message):
-        s = '%s %s' % (datetime.datetime.now().strftime("%H:%M:%S"), message)
-        if (message.startswith('--- ') 
-                or message.startswith('!!! ')
-                or message.startswith('*** ')):
-            self.console.append(s)
-        else:
-            print(s)
-
     def on_table_changed(self):
         self.table.model().updateTable()
 
@@ -401,9 +360,8 @@ class Installer(QWidget):
             self.configurations_list.setEnabled(False)
             self.installation_path.setEnabled(False)
             self.button_start.setEnabled(False)
-            self.button_browse.setText('Открыть (архив или base.txt)')
+            self.button_browse.setText('Открыть')
             self.button_browse.setEnabled(True)
-            self.button_check.setEnabled(False)
             self.button_base.setEnabled(False)
             self.button_conf.setEnabled(False)
             self.button_do_verify.setEnabled(False)
@@ -413,7 +371,6 @@ class Installer(QWidget):
             self.configurations_list.setEnabled(False)
             self.installation_path.setEnabled(False)
             self.button_start.setEnabled(False)
-            self.button_check.setEnabled(False)
             self.button_browse.setText('Отменить')
             self.button_browse.setEnabled(True)
             self.button_base.setEnabled(False)
@@ -423,12 +380,11 @@ class Installer(QWidget):
 
         # Распакован архив
         elif self.state == Installer.State.PREPARED:
-            self.button_browse.setText('Открыть (архив или base.txt)')
+            self.button_browse.setText('Открыть')
             self.button_browse.setEnabled(True)
-            self.button_check.setEnabled(False)
             self.button_start.setText('Старт')
             self.button_base.setEnabled(True)
-            self.button_conf.setEnabled(False)
+            self.button_conf.setEnabled(True)
             self.button_do_verify.setEnabled(True)
             self.configurations_list.setEnabled(True)
             self.installation_path.setEnabled(True)
@@ -445,7 +401,6 @@ class Installer(QWidget):
 
         elif self.state == Installer.State.INSTALLING:
             self.button_browse.setEnabled(False)
-            self.button_check.setEnabled(False)
             self.button_base.setEnabled(False)
             self.button_conf.setEnabled(False)
             self.button_do_verify.setEnabled(False)
@@ -466,7 +421,7 @@ class Installer(QWidget):
             host.checked = not host.checked
         elif column == 1:
             if host.state == Host.State.IDLE or host.state == Host.State.SUCCESS or host.state == Host.State.FAILURE:
-                logger.message_appeared.emit('--- Запуск %s' % host.hostname)
+                helpers.Logger.i('Запуск %s' % host.hostname)
                 host.state = Host.State.QUEUED
                 self.worker_needed.emit()
             elif host.state == Host.State.QUEUED:
@@ -476,7 +431,6 @@ class Installer(QWidget):
         self.table_changed.emit()
 
     def on_conf_selected(self):  # Выбрали мышкой конфигурацию
-        self.button_check.setEnabled(True)
         self.button_conf.setEnabled(True)
 
         # Ключ доступа к выбранной конфигурации
@@ -505,12 +459,6 @@ class Installer(QWidget):
             if add_new:
                 self.table.model().data.add_host(host1.hostname)
 
-    def merge_hosts_from_discovered(self, hosts):
-        for host in hosts:
-            if host not in [host.hostname for host in self.table.model().data.hosts]:
-                self.table.model().data.add_host(host, checked=False)
-        self.table_changed.emit()
-
     def on_installation_path_changed(self):
         if self.installation_path.text() != '':
             self.button_start.setEnabled(True)
@@ -523,9 +471,10 @@ class Installer(QWidget):
             default_browse_path = settings.value('default_browse_path', r'C:\\', type=str)
             options = QFileDialog.Options()
             options |= QFileDialog.DontUseNativeDialog
-            file, _ = QFileDialog.getOpenFileName(self, 'Выберите дистрибутив или укажите '
-                                                        'base.txt в распакованном дистрибутиве', default_browse_path,
-                                                  'Дистрибутив (*.zip *.7z *.tar.xz base.txt)', options=options)
+            file, _ = QFileDialog.getOpenFileName(self,
+                'Выберите дистрибутив или укажите '
+                'base.txt или patch.txt в распакованном дистрибутиве', default_browse_path,
+                'Дистрибутив (*.zip base*.txt)', options=options)
             if not file:
                 self.state = Installer.State.DEFAULT
                 return
@@ -534,9 +483,11 @@ class Installer(QWidget):
                 settings.setValue('default_browse_path', os.path.dirname(file))
                 settings.sync()
 
+            self.reset()
             threading.Thread(target=self.prepare_distribution, args=(file,)).start()
         else:
             threading.Thread(target=self.prepare_distribution_stop).start()
+            self.reset()
 
     def on_clicked_button_start(self):
         if not self.state == Installer.State.INSTALLING:
@@ -582,31 +533,12 @@ class Installer(QWidget):
                 host.state = Host.State.QUEUED
         self.worker_needed.emit()
 
-    def on_clicked_button_console(self):
-        if self.stacked.currentIndex() == 0:
-            self.button_console.setText('Таблица')
-            self.stacked.setCurrentIndex(1)
-        else:
-            self.button_console.setText('Лог')
-            self.stacked.setCurrentIndex(0)
-
-    def on_clicked_button_check(self):
-        if self.button_check_toggle:
-            for host in self.table.model().data.hosts:
-                host.checked = True
-        else:
-            for host in self.table.model().data.hosts:
-                host.checked = False
-        self.button_check_toggle = not self.button_check_toggle
-        self.table_changed.emit()
-
     def on_clicked_button_base(self):
-        subprocess.run('explorer %s' % self.distribution.base, shell=True)
+        helpers.open_folder(self.distribution.base)
 
     def on_clicked_button_conf(self):
-        subprocess.run('explorer %s' % os.path.join(self.distribution.configurations_dir,
-                                   self.configurations[self.configurations_list.currentIndex().row()]), shell=True)
-
+        helpers.open_folder(os.path.join(self.distribution.configurations_dir,self.configurations[self.configurations_list.currentIndex().row()]))
+    
     def on_clicked_button_do_verify(self):
         if self.do_verify:
             self.button_do_verify.setIcon(QIcon('images//do_verify_false.png'))
@@ -619,7 +551,7 @@ class Installer(QWidget):
     def on_clicked_button_about(self):
         page = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'about', 'about.html')
         os.system('start ' + page)
-        
+
     def remove_pid(self, pid):
         try:
             self.pids.remove(pid)
@@ -641,7 +573,7 @@ class Installer(QWidget):
         destination_host.base_timer = 0
         threading.Thread(target=timer).start()
 
-        # Шаг 0 (Только Win32): "Отстрел" процессов, запущенных из директории для установки.
+        # Останов процессов, запущенных из места установки.
         if sys.platform == 'win32':
             if self.hostname != destination_host.hostname:
                 auth = ' /node:"%s" /user:"%s" /password:"%s"' \
@@ -649,7 +581,7 @@ class Installer(QWidget):
             else:
                 auth = ''
             cmd = r'wmic%s process list full' % auth
-            logger.message_appeared.emit('>>> ' + cmd)
+            helpers.Logger.i(cmd)
             r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             processes = []
             for line in list(filter(None, [line.strip() for line in r.stdout.decode(errors='ignore').splitlines()])):
@@ -667,118 +599,94 @@ class Installer(QWidget):
                     else:
                         auth = ''
                     cmd = 'taskkill%s /t /f /pid %s' % (auth, pid)
-                    logger.message_appeared.emit('>>>' + cmd)
+                    helpers.Logger.i(cmd)
                     subprocess.run(cmd, shell=True)
-
-        # Шаг 1: Удаление существующего каталога установки (если есть).
-        if sys.platform == 'win32':
-            if self.hostname != destination_host.hostname:
-                auth = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -c ' \
-                       % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
-            else:
-                auth = ''
-            cmd = r'%srm.exe "%s"' \
-                  % (auth,
-                     self.installation_path.text())
-            logger.message_appeared.emit('>>> %s' % cmd)
-            r = subprocess.Popen(cmd, shell=True)
-            self.pids.add(r.pid)
-            r.wait()
-            if self.stop:
-                return
-            self.remove_pid(r.pid)
-            if r.returncode != 0:
-                logger.message_appeared.emit('*** На %s не удалось удалить %s' % (destination_host.hostname, self.installation_path.text()))
-                if source_host:
-                    source_host.state = Host.State.BASE_SUCCESS
-                destination_host.state = Host.State.FAILURE
-                self.worker_needed.emit()
-                return
         else:
-            cmd = 'ssh root@%s "rm -rf \"%s\" ; mkdir -p \"%s\""' \
-                  % (destination_host.hostname, self.installation_path.text(), self.installation_path.text())
-            subprocess.run(cmd, shell=True)
+            pass  # TODO Сделать останов процессов из места установки для Linux!
+
+        # Удаление существующего каталога установки, если необходимо.
+        if not self.patch_mode:
+            if sys.platform == 'win32':
+                if self.hostname != destination_host.hostname:
+                    auth = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -c -f ' \
+                           % (destination_host.hostname, Globals.samba_login, Globals.samba_password)
+                else:
+                    auth = ''
+                cmd = r'%smake-empty.exe "%s"' % (auth, self.installation_path.text())
+                helpers.Logger.i(cmd)
+                r = subprocess.Popen(cmd, shell=True)
+                self.pids.add(r.pid)
+                r.wait()
+                if self.stop:
+                    return
+                self.remove_pid(r.pid)
+                if r.returncode != 0:
+                    helpers.Logger.e('На %s не удалось удалить %s' % (destination_host.hostname, self.installation_path.text()))
+                    if source_host:
+                        source_host.state = Host.State.BASE_SUCCESS
+                    destination_host.state = Host.State.FAILURE
+                    self.worker_needed.emit()
+                    return
+            else:
+                cmd = 'ssh root@%s "rm -rf \"%s\" ; mkdir -p \"%s\""' \
+                      % (destination_host.hostname, self.installation_path.text(), self.installation_path.text())
+                subprocess.run(cmd, shell=True)
 
         # Шаг 2: Копирование base.
         source_hostname = source_host.hostname if source_host else None
         source_path = self.installation_path.text() if source_host else self.distribution.base
 
-        if source_hostname:  # копирование с удалённого хоста на удалённый
-            if sys.platform == 'win32':
-                cmd = 'PsExec64.exe -accepteula -nobanner \\\\%s -u %s -p %s robocopy %s \\\\%s\\%s /e /mt:32 /r:0 /w:0 /np /nfl /njh /njs /ndl /nc /ns > nul 2>&1' \
-                      % (source_hostname, Globals.samba_login, Globals.samba_password, source_path, destination_host.hostname, self.installation_path.text().strip().replace(':', '$'))
-            else:
-                cmd = 'ssh root@%s "rsync -a --delete \"%s/\" root@%s:\"%s\""' \
-                      % (source_hostname,
-                         self.installation_path.text(),
-                         destination_host.hostname,
-                         self.installation_path.text())
-        else:  # самое первое копирование, с локального хоста на удалённый
-            if sys.platform == 'win32':
-                cmd = 'robocopy "%s" "\\\\%s\\%s" /e /mt:32 /r:0 /w:0 /np /nfl /njh /njs /ndl /nc /ns > nul 2>&1' \
-                % (source_path, destination_host.hostname, self.installation_path.text().strip().replace(':', '$'))
-            else:
-                cmd = 'rsync -a --delete \"%s/\" root@%s:\"%s\"' \
-                      % (source_path, destination_host.hostname, self.installation_path.text())
-        logger.message_appeared.emit('>>> %s' % cmd)
-        r = subprocess.Popen(cmd, shell=True)
+        if not self.patch_mode and source_hostname:  # Копирование с удалённого хоста на удалённый.
+            r = helpers.sync_remote_to_remote(source_hostname, source_path, destination_host.hostname, source_path,
+                                              Globals.samba_login, Globals.samba_password)
+        else:  # Копирование с локального хоста на удалённый.
+            r = helpers.copy_from_local_to_remote(source_path, destination_host.hostname, self.installation_path.text().strip())
+
         self.pids.add(r.pid)
         r.wait()
-        if self.stop:
-            return 'Принудительная остановка'
         self.remove_pid(r.pid)
 
-        if sys.platform == 'win32':
-            if r.returncode != 1:
-                logger.message_appeared.emit('*** Ошибка robocopy с %s на %s. Команда для воспроизведения: %s' 
-                                             % (source_host.hostname, destination_host.hostname, cmd))
-                if source_host:
-                    source_host.state = Host.State.BASE_SUCCESS
-                destination_host.state = Host.State.FAILURE
-                self.worker_needed.emit()
-                return
-        else:
-            if r.returncode != 0:
-                destination_host.state = Host.State.FAILURE
+        if r.returncode != 0:
+            if source_host:
+                source_host.state = Host.State.BASE_SUCCESS
+            destination_host.state = Host.State.FAILURE
+            self.worker_needed.emit()
+            return
 
-        # Шаг 3: проверка md5 по base.txt.
+        # Шаг 3: проверка md5 по base.txt/patch.txt.
         result = Host.State.BASE_SUCCESS
+        destination_host.md5_timer = 0
         if sys.platform == 'win32':
             if self.hostname != destination_host.hostname:
-                cmd = r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -f verify-base.exe' \
-                      % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
-                         self.installation_path.text())
+                cmd = (r'PsExec64.exe -accepteula -nobanner \\%s -u %s -p %s -w %s -c -f verify-md5.exe %s'
+                       % (destination_host.hostname, Globals.samba_login, Globals.samba_password,
+                          self.installation_path.text(), os.path.basename(self.distribution.base_txt)))
             else:
-                cmd = r'cd /d %s & %s' % (self.installation_path.text(),
-                                          os.path.join(os.path.dirname(os.path.realpath(__file__)), 'verify-base.exe'))
-            logger.message_appeared.emit('>>> ' + cmd)
-            destination_host.md5_timer = 0
-            r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            returncode = r.returncode
-            files_with_mismatched_md5 = list(
-                filter(None, [file.strip() for file in (r.communicate()[0]).decode(errors='ignore').split('\n')]))
+                cmd = (r'cd /d %s & %s'
+                       % (self.installation_path.text(),
+                          os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                                       'verify-md5.exe %s' % os.path.basename(self.distribution.base_txt))))
+            helpers.Logger.i(cmd)
+            r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         else:
             cmd = 'scp %s root@%s:%s' \
-                  % (os.path.join(os.path.dirname(os.path.realpath(__file__)), 'verify-base'),
+                  % (os.path.join(os.path.dirname(os.path.realpath(__file__)), 'verify-md5'),
                      destination_host.hostname, self.installation_path.text())
-            logger.message_appeared.emit('>>> ' + cmd)
+            helpers.Logger.i(cmd)
             subprocess.run(cmd, shell=True)
-            cmd = 'ssh root@%s "cd \"%s\";chmod +x verify-base;./verify-base"' % (destination_host.hostname, self.installation_path.text())
-            logger.message_appeared.emit('>>> ' + cmd)
-            r = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            stdout = (r.communicate()[0]).decode(errors='ignore')
-            returncode = r.returncode
-            files_with_mismatched_md5 = list(
-                filter(None, [file.strip() for file in stdout.split('\n')]))
-            cmd = 'ssh root@%s rm "%s/verify-base"' % (destination_host.hostname, self.installation_path.text())
-            logger.message_appeared.emit('>>> ' + cmd)
-            subprocess.run(cmd, shell=True)
+            cmd = 'ssh root@%s "cd \"%s\";chmod +x verify-md5;./verify-md5 %s"' % (destination_host.hostname, self.installation_path.text(), os.path.basename(self.distribution.base_txt))
+            helpers.Logger.i(cmd)
+            r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            os.system('ssh root@%s rm "%s/verify-md5"' % (destination_host.hostname, self.installation_path.text()))
+        returncode = r.returncode
+        stdout = r.stdout.decode(errors='ignore')
+        files_with_mismatched_md5 = list(filter(None, [file.strip() for file in (stdout.split('\n'))]))
         if returncode:
             if self.do_verify:
                 result = Host.State.FAILURE
             if files_with_mismatched_md5:
                 for file in files_with_mismatched_md5:
-                    logger.message_appeared.emit('!!! %s: ошибка md5: %s' % (destination_host.hostname, file))
+                    helpers.Logger.e('%s: ошибка md5: %s' % (destination_host.hostname, file))
         destination_host.state = result
         if source_host:
             source_host.state = Host.State.BASE_SUCCESS
@@ -806,7 +714,7 @@ class Installer(QWidget):
                          full_path,
                          host.hostname,
                          remote_path)
-                logger.message_appeared.emit('>>> %s' % cmd)
+                helpers.Logger.i(cmd)
                 r = subprocess.run(cmd, shell=True)
                 if r.returncode:
                     return False
@@ -852,8 +760,7 @@ class Installer(QWidget):
                 r = subprocess.run(cmd, shell=True)
                 if r.returncode:
                     host.state = host.post_state = Host.State.FAILURE
-                    logger.message_appeared.emit('*** Ошибка выполнения post-скрипта: command=%s returncode=%d'
-                                                 % (cmd, r.returncode))
+                    helpers.Logger.i('Ошибка выполнения post-скрипта: command=%s returncode=%d'% (cmd, r.returncode))
                 else:
                     host.state = host.post_state = Host.State.POST_SUCCESS
                 self.table_changed.emit()
@@ -868,27 +775,28 @@ class Installer(QWidget):
         # Копирование base
         have_source_host = False
         any_base_copy_started = False
-        for source_host in [host for host in self.table.model().data.hosts if host.checked]:
-            if source_host.state == Host.State.BASE_SUCCESS:
-                have_source_host = True
-                possible_destination_hosts = []
-                for destination_host in [host for host in self.table.model().data.hosts if host.checked]:
-                    if destination_host.state == Host.State.QUEUED:
-                        possible_destination_hosts.append(destination_host)
-                if possible_destination_hosts:
-                    destination_host = random.choice(possible_destination_hosts)
-                    source_host.state = Host.State.BASE_INSTALLING_SOURCE
-                    destination_host.state = Host.State.BASE_INSTALLING_DESTINATION
-                    logger.message_appeared.emit('--- Копирование base: %s -> %s' % (source_host.hostname,
-                                                                                     destination_host.hostname))
-                    threading.Thread(target=self.do_copy_base, args=(source_host, destination_host)).start()
-                    any_base_copy_started = True
-        if not have_source_host:  # Нет source-хоста но возможно уже запущенно какое-то копирование
-            for host in [host for host in self.table.model().data.hosts if host.checked]:
-                if host.state == Host.State.BASE_INSTALLING_DESTINATION:
+        if not self.patch_mode:
+            for source_host in [host for host in self.table.model().data.hosts if host.checked]:
+                if source_host.state == Host.State.BASE_SUCCESS:
                     have_source_host = True
-                    break
-        if not have_source_host:
+                    possible_destination_hosts = []
+                    for destination_host in [host for host in self.table.model().data.hosts if host.checked]:
+                        if destination_host.state == Host.State.QUEUED:
+                            possible_destination_hosts.append(destination_host)
+                    if possible_destination_hosts:
+                        destination_host = random.choice(possible_destination_hosts)
+                        source_host.state = Host.State.BASE_INSTALLING_SOURCE
+                        destination_host.state = Host.State.BASE_INSTALLING_DESTINATION
+                        helpers.Logger.i('Копирование base: %s -> %s' % (source_host.hostname,
+                                                                                         destination_host.hostname))
+                        threading.Thread(target=self.do_copy_base, args=(source_host, destination_host)).start()
+                        any_base_copy_started = True
+            if not have_source_host:  # Нет source-хоста но возможно уже запущенно какое-то копирование
+                for host in [host for host in self.table.model().data.hosts if host.checked]:
+                    if host.state == Host.State.BASE_INSTALLING_DESTINATION:
+                        have_source_host = True
+                        break
+        if self.patch_mode or not have_source_host:
             first_host = None 
             for destination_host in [host for host in self.table.model().data.hosts if host.checked]:
                 if destination_host.hostname == self.hostname and destination_host.state == destination_host.state.QUEUED:
@@ -901,7 +809,7 @@ class Installer(QWidget):
                         break
             if first_host:
                 first_host.state = Host.State.BASE_INSTALLING_DESTINATION
-                logger.message_appeared.emit('--- Копирование base: localhost -> %s' % first_host.hostname)
+                helpers.Logger.i('Копирование base: localhost -> %s' % first_host.hostname)
                 first_host.base_timer = -1
                 first_host.md5_timer = -1
                 threading.Thread(target=self.do_copy_base, args=(None, first_host)).start()
@@ -914,6 +822,7 @@ class Installer(QWidget):
             if (host.state == Host.State.QUEUED or host.state == Host.State.BASE_INSTALLING_SOURCE
                     or host.state == Host.State.BASE_INSTALLING_DESTINATION):
                 return
+
         # Если нет ни одного QUEUED, значит все так или иначе прошли копирование base - поэтому ищем BASE_SUCCESS
         # и ставим копирование conf.
         for host in [host for host in self.table.model().data.hosts if host.checked]:
@@ -953,6 +862,9 @@ class Installer(QWidget):
         self.state = Installer.State.PREPARED
         self.state_changed.emit()
 
+    def reset(self):
+        self.button_log.setIcon(QIcon('images//log.png'))
+
     def prepare_distribution(self, uri):
         def timer():
             while self.state == Installer.State.PREPARING:
@@ -964,12 +876,11 @@ class Installer(QWidget):
                 self.window_title_changed.emit()
 
         self.state = Installer.State.PREPARING
-        self.button_console.setStyleSheet("background-color:;")
 
         threading.Thread(target=timer).start()
 
-        self.console.clear()  # Очищаем консоль перед каждым новым дистрибутивом
-        logger.message_appeared.emit('--- Открываем ' + uri)
+        helpers.Logger.reset()
+        helpers.Logger.i('Открываем %s' % uri)
 
         self.distribution = Installer.Distribution(uri)
 
@@ -979,28 +890,22 @@ class Installer(QWidget):
         self.table_data_dict.clear()
         #self.configurations_list.setModel(None) #TODO
         self.post_install_scripts_dict.clear()
-
         self.state_changed.emit()
 
-        if uri.endswith('base.txt'):  # указали на уже распакованный дистрибутив
+        if os.path.basename(uri).startswith('base') and os.path.basename(uri).endswith('.txt'):
             base_txt = uri
-        else:  # выбрали файл дистрибутива
+        else:
             unpack_to = self.unpack_distribution(uri)
-            base_txt_1 = os.path.join(unpack_to, 'base', 'base.txt')
-            base_txt_2 = os.path.join(unpack_to, 'base.txt')
-            if os.path.isfile(base_txt_1):
-                base_txt = base_txt_1
-            elif os.path.isfile(base_txt_2):
-                base_txt = base_txt_2
-            else:
+            g = glob.glob(os.path.join(unpack_to, 'base', 'base*.txt'))
+            if len(g)!=1:  # файл вида base*.txt в корне распакованного дистрибутива должен быть только один!
                 self.state = Installer.State.DEFAULT
-                logger.message_appeared.emit('*** После распаковки не найден base.txt')
-                self.button_console.setStyleSheet("background-color:#F23E35;")
+                helpers.Logger.e('После распаковки не найден base*.txt')
+                self.button_log.setIcon(QIcon('images//log_e.png'))
                 self.state_changed.emit()
                 return
+            base_txt = g[0]
 
         conf = os.path.join(os.path.dirname(base_txt), '..', 'conf')
-
         if os.path.isdir(conf):
             for name in os.listdir(conf):
                 destination = ''
@@ -1030,13 +935,13 @@ class Installer(QWidget):
         self.distribution.base_txt = base_txt
         self.distribution.base = os.path.dirname(self.distribution.base_txt)
 
+        self.patch_mode = True if os.path.basename(self.distribution.base_txt).startswith('base-') else False
+
         # Сканируем дистрибутив и создаём список исполняемых файлов для отстрела перед установкой
         for root, dirs, files in os.walk(self.distribution.base):
             for file in files:
                 if file.endswith('.exe'):
                     self.distribution.executables.append(file)
-
-        self.button_console.setStyleSheet("background-color:;")
 
         def get_path_size():
             for dirpath, dirnames, filenames in os.walk(self.distribution.base):
@@ -1063,23 +968,17 @@ class Installer(QWidget):
 
     @staticmethod
     def unpack_distribution(file):
-        unpack_to = os.path.splitext(file)[0]  # отрезаем расширение: .7z, .zip, .xz
-        if unpack_to.endswith('.tar'):
-            unpack_to = os.path.splitext(unpack_to)[0] # отрезаем ещё и .tar, если есть
-
-        logger.message_appeared.emit('--- Каталог распаковки %s' % unpack_to)
+        unpack_to = os.path.splitext(file)[0]  # отрезаем .zip
         if os.path.exists(unpack_to):
-            logger.message_appeared.emit('--- Удаление каталога распаковки')
+            helpers.Logger.i('Удаление каталога распаковки')
             shutil.rmtree(unpack_to)
+        helpers.Logger.i('Создание каталога распаковки %s' % unpack_to)
         os.makedirs(unpack_to)
-        if sys.platform == 'win32':
-            cmd = '7za.exe x "'+file+'" -aoa -o"'+unpack_to+'"'
-        else:
-            cmd = 'tar xJvf "'+file+'" -C "'+unpack_to+'" > /dev/null'
-        logger.message_appeared.emit('>>> %s' % cmd)
+        cmd = '7za x "'+file+'" -aoa -o"'+unpack_to+'"'
+        helpers.Logger.i(cmd)
         r = subprocess.run(cmd, shell=True)
         if r.returncode != 0:
-            logger.message_appeared.emit('!!! Сбой при распаковке архива, архив битый?')
+            helpers.Logger.w('Сбой при распаковке архива, архив битый?')
         return unpack_to
 
     def on_title_changed(self):
@@ -1098,14 +997,12 @@ class Installer(QWidget):
         title += ' • Дистрибутив: ' + self.distribution.name
 
         if self.distribution.uri.endswith('.zip') or self.distribution.uri.endswith('.tar.xz'):
-            title += ' (распакован за %s' % helpers.seconds_to_human(self.distribution.prepare_timer)
-        else:
-            title += ' (без распаковки'
+            title += ' распакован за %s' % helpers.seconds_to_human(self.distribution.prepare_timer)
 
-        title += ', ' + helpers.bytes_to_human(abs(self.distribution.size))
+        title += ' ' + helpers.bytes_to_human(abs(self.distribution.size))
         if self.distribution.size > 0:
             title += '...'
-        title += ')'
+        title += ' ПАТЧ' if self.patch_mode else ''
 
         if self.state == Installer.State.INSTALLING:
             title += ' • Установка... ' + helpers.seconds_to_human(self.distribution.installation_timer)

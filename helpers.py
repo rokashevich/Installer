@@ -7,40 +7,70 @@ import time
 import shutil
 import zipfile
 import subprocess
-
-from globals import Globals
-
-
-# https://superuser.com/questions/914782/how-do-you-list-all-processes-on-the-command-line-in-windows
-
-# ✅✓✔⚫⚪◉🔘◯🌕🌑●○🔳🔲⛳ ➤▶▸►❱›➡➔➜➧➫➩ ✕✖❌✗✘❌↻ 👍👎📁📂📄📜🔨🔧😸
-
-# def git_revision():
-#     cmd=['git','log','-n 1','--date=format:%Y.%m.%d-%H:%M','--pretty=format:%ad %ae %s']
-#     revision=''
-#     out=''
-#     try:
-#         r=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding=sys.stdout.encoding)
-#         if r.returncode!=0:sys.exit('error:subprocess.run:'+repr(r))
-#         chunks=r.stdout.strip().split(maxsplit=2)
-#         timestamp=chunks[0]
-#         author=chunks[1].split('@')[0]
-#         message=chunks[2]
-#         cmd=['git','describe','--always']
-#         r=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding=sys.stdout.encoding)
-#         if r.returncode!=0:sys.exit('error:subprocess.run:'+repr(r))
-#         revision=r.stdout.strip()
-#         out=revision+' '+timestamp+' '+author+' '+message
-#     except:
-#         revision='UNKNOWN'
-#         out='UNKNOWN'
-#     return[revision,out]
+import tempfile
 
 
-def discover_lan_hosts():
-    return [host.replace('\\', '').strip().lower() for host in str(
-        subprocess.run(r'net view /all', shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout).split(r'\r\n')
-            if host.startswith('\\\\')]
+class Logger:
+    messages = []
+    logfile = tempfile.mktemp(prefix="installer_", suffix=".txt")
+
+    @staticmethod
+    def reset():
+        open(Logger.logfile,'w')
+
+    @staticmethod
+    def i(message):
+        Logger.write('--- %s' % message)
+
+    @staticmethod
+    def w(message):
+        Logger.write('!!! %s' % message)
+
+    @staticmethod
+    def e(message):
+        Logger.write('*** %s' % message)
+
+    @staticmethod
+    def write(message):
+        pass
+        message = '%s\n' % message
+        print(message)
+        with open(Logger.logfile, 'a') as f:
+            f.write(message)
+
+    @staticmethod
+    def show():
+        if not os.path.exists(Logger.logfile):
+            Logger.reset()
+        open_txt(Logger.logfile)
+
+
+def sync_remote_to_remote(source_hostname, source_path, destination_hostname, destination_path, login, password):
+    success = 0
+    if sys.platform == 'win32':
+        # cmd = 'PsExec64.exe -accepteula -nobanner \\\\%s -u %s -p %s robocopy %s \\\\%s\\%s /e /mt:32 /r:0 /w:0 /np /nfl /njh /njs /ndl /nc /ns > nul 2>&1' \
+        #       % (source_hostname,
+        #          login, password,
+        #          path, destination_hostname, path.replace(':', '$'))
+        cmd = 'PsExec64.exe -accepteula -nobanner \\\\%s -u %s -p %s xcopy "%s" "\\\\%s\\%s" /seyq > nul 2>&1' % (
+            source_hostname,
+            login, password,
+            source_path, destination_hostname, destination_path.replace(':', '$'))
+    else:
+        cmd = 'ssh root@%s "rsync -a --delete \"%s/\" root@%s:\"%s\""' \
+              % (source_hostname, source_path, destination_hostname, destination_path)
+    return subprocess.Popen(cmd, shell=True)
+
+
+def copy_from_local_to_remote(source_path, destinatin_hostname, destination_path):
+    if sys.platform == 'win32':
+        # cmd = 'robocopy "%s" "\\\\%s\\%s" /e /mt:32 /r:0 /w:0 /np /nfl /njh /njs /ndl /nc /ns > nul 2>&1' \
+        #       % (source_path, destinatin_hostname, destination_path.replace(':', '$'))
+        cmd = 'xcopy "%s" "\\\\%s\\%s" /seyq > nul 2>&1' % (source_path, destinatin_hostname, destination_path.replace(':', '$'))
+    else:
+        cmd = 'rsync -a --delete \"%s/\" root@%s:\"%s\"' \
+              % (source_path, destinatin_hostname, destination_path)
+    return subprocess.Popen(cmd, shell=True)
 
 
 def git_revision(path=''):
@@ -70,3 +100,17 @@ def bytes_to_human(num, suffix='B'):
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f%s%s" % (num, 'Yi', suffix)
+
+
+def open_folder(path):
+    if sys.platform == 'win32':
+        subprocess.run('explorer %s' % path, shell=True)
+    else:
+        subprocess.run('xdg-open %s' % path, shell=True)
+
+
+def open_txt(path):
+    if sys.platform == 'win32':
+        subprocess.run('notepad %s' % path, shell=True)
+    else:
+        subprocess.run('xdg-open %s' % path, shell=True)
