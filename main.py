@@ -4,12 +4,15 @@ import os
 import sys
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QCoreApplication
-from PyQt5.QtGui import QFont, QIcon
+from PyQt5.QtGui import QIcon
 from PyQt5 import QtWidgets
 
-sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from globals import Globals
 from installer import Installer
+
+installer_dir = os.path.dirname(os.path.realpath(__file__))
+os.chdir(installer_dir)
+sys.path.append(installer_dir)
 
 if __name__ == '__main__':
     QCoreApplication.setOrganizationName(Globals.organization_name)

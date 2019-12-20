@@ -2,6 +2,6 @@
 
 
 class Globals:
-    organization_name = 'ST'
-    samba_login = 'st'
-    samba_password = 'stinstaller'
+    organization_name = 'xx'
+    samba_login = 'xx'
+    samba_password = 'xxxxxxxx'

@@ -12,7 +12,7 @@ import tempfile
 
 class Logger:
     messages = []
-    logfile = tempfile.mktemp(prefix="installer_", suffix=".txt")
+    logfile = "installer.log"
 
     @staticmethod
     def reset():
@@ -38,12 +38,6 @@ class Logger:
         with open(Logger.logfile, 'a') as f:
             f.write(message)
 
-    @staticmethod
-    def show():
-        if not os.path.exists(Logger.logfile):
-            Logger.reset()
-        open_txt(Logger.logfile)
-
 
 def sync_remote_to_remote(source_hostname, source_path, destination_hostname, destination_path, login, password):
     success = 0
@@ -62,14 +56,17 @@ def sync_remote_to_remote(source_hostname, source_path, destination_hostname, de
     return subprocess.Popen(cmd, shell=True)
 
 
-def copy_from_local_to_remote(source_path, destinatin_hostname, destination_path):
+def copy_from_local_to_remote(source_path, destinatin_hostname, destination_path, delete=False):
     if sys.platform == 'win32':
         # cmd = 'robocopy "%s" "\\\\%s\\%s" /e /mt:32 /r:0 /w:0 /np /nfl /njh /njs /ndl /nc /ns > nul 2>&1' \
         #       % (source_path, destinatin_hostname, destination_path.replace(':', '$'))
         cmd = 'xcopy "%s" "\\\\%s\\%s" /seyq > nul 2>&1' % (source_path, destinatin_hostname, destination_path.replace(':', '$'))
     else:
-        cmd = 'rsync -a --delete \"%s/\" root@%s:\"%s\"' \
-              % (source_path, destinatin_hostname, destination_path)
+        additional_params = ''
+        if delete:
+            additional_params = '--delete'
+        cmd = 'rsync -a %s \"%s/\" root@%s:\"%s\"' \
+              % (additional_params, source_path, destinatin_hostname, destination_path)
     return subprocess.Popen(cmd, shell=True)
 
 
