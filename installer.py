@@ -19,8 +19,6 @@ from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSignal, QCoreApp
 import helpers
 from globals import Globals
 
-sys.path.append(os.path.dirname(os.path.realpath(__file__)))
-
 
 class Host:
     class State(Enum):
