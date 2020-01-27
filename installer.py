@@ -281,16 +281,16 @@ class Installer(QWidget):
         # If rowSpan and/or columnSpan is -1, then the widget will extend to the bottom and/or right edge, respectively.
         # https://doc.qt.io/qt-5/qgridlayout.html#addWidget-2
 
-        gl.addWidget(self.button_browse,              0, 0, 1, 1)  #
-        gl.addWidget(self.button_start,               0, 1, 1, 1)  # Верхний ряд кнопок
-        gl.addWidget(self.button_base,                0, 2, 1, 1)  #
-        gl.addWidget(self.button_conf,                0, 3, 1, 1)  #
-        gl.addWidget(self.button_do_verify,           0, 4, 1, 1)  #
+        gl.addWidget(self.button_browse, 0, 0, 1, 1)  #
+        gl.addWidget(self.button_start, 0, 1, 1, 1)  # Верхний ряд кнопок
+        gl.addWidget(self.button_base, 0, 2, 1, 1)  #
+        gl.addWidget(self.button_conf, 0, 3, 1, 1)  #
+        gl.addWidget(self.button_do_verify, 0, 4, 1, 1)  #
 
-        gl.addWidget(self.installation_path,          1, 0, 1, 5)  #
-        gl.addWidget(self.configurations_list,        2, 0, 1, 5)  # Элементы друг над другом
+        gl.addWidget(self.installation_path, 1, 0, 1, 5)  #
+        gl.addWidget(self.configurations_list, 2, 0, 1, 5)  # Элементы друг над другом
 
-        gl.addWidget(self.table,                      0, 6, -1, 1)  # Контейнер: консоль или лог
+        gl.addWidget(self.table, 0, 6, -1, 1)  # Контейнер: консоль или лог
 
         self.setLayout(gl)
 
@@ -362,13 +362,14 @@ class Installer(QWidget):
             self.configurations_list.setEnabled(True)
             self.installation_path.setEnabled(True)
 
-            self.configurations_list.setModel(PyQt5.QtCore.QStringListModel(self.configurations))
-            self.configurations_list.selectionModel().currentChanged.connect(self.on_conf_selected)
-            self.configurations_list.setMinimumWidth(
-                self.configurations_list.sizeHintForColumn(0)
-                + 2 * self.configurations_list.frameWidth()
-            )
-            self.button_start.setEnabled(False)
+            if self.configurations_list.model().rowCount() == 0:
+                self.configurations_list.setModel(PyQt5.QtCore.QStringListModel(self.configurations))
+                self.configurations_list.selectionModel().currentChanged.connect(self.on_conf_selected)
+                self.configurations_list.setMinimumWidth(
+                    self.configurations_list.sizeHintForColumn(0)
+                    + 2 * self.configurations_list.frameWidth()
+                )
+            self.button_start.setEnabled(True)
 
             self.table.setEnabled(True)
 
@@ -435,9 +436,9 @@ class Installer(QWidget):
             options = QFileDialog.Options()
             options |= QFileDialog.DontUseNativeDialog
             file, _ = QFileDialog.getOpenFileName(self,
-                'Выберите дистрибутив или укажите '
-                'base.txt в распакованном дистрибутиве', default_browse_path,
-                'Дистрибутив (*.zip base*.txt)', options=options)
+                                                  'Выберите дистрибутив или укажите '
+                                                  'base.txt в распакованном дистрибутиве', default_browse_path,
+                                                  'Дистрибутив (*.zip base*.txt)', options=options)
             if not file:  # При выборе дистрибутива нажали Cancel.
                 self.state = Installer.State.DEFAULT
                 return
@@ -500,8 +501,9 @@ class Installer(QWidget):
         helpers.open_folder(self.distribution.base)
 
     def on_clicked_button_conf(self):
-        helpers.open_folder(os.path.join(self.distribution.configurations_dir,self.configurations[self.configurations_list.currentIndex().row()]))
-    
+        helpers.open_folder(os.path.join(self.distribution.configurations_dir,
+                                         self.configurations[self.configurations_list.currentIndex().row()]))
+
     def on_clicked_button_do_verify(self):
         if self.do_verify:
             self.button_do_verify.setStyleSheet("text-decoration: line-through;")
@@ -580,7 +582,8 @@ class Installer(QWidget):
                 return
             self.remove_pid(r.pid)
             if r.returncode != 0:
-                helpers.Logger.e('На %s не удалось удалить %s' % (destination_host.hostname, self.installation_path.text()))
+                helpers.Logger.e(
+                    'На %s не удалось удалить %s' % (destination_host.hostname, self.installation_path.text()))
                 if source_host:
                     source_host.state = Host.State.BASE_SUCCESS
                 destination_host.state = Host.State.FAILURE
@@ -634,7 +637,8 @@ class Installer(QWidget):
                          destination_host.hostname, self.installation_path.text())
                 helpers.Logger.i(cmd)
                 subprocess.run(cmd, shell=True)
-                cmd = 'ssh root@%s "cd \"%s\";chmod +x verify-md5;./verify-md5 %s"' % (destination_host.hostname, self.installation_path.text(), os.path.basename(self.distribution.base_txt))
+                cmd = 'ssh root@%s "cd \"%s\";chmod +x verify-md5;./verify-md5 %s"' % (
+                destination_host.hostname, self.installation_path.text(), os.path.basename(self.distribution.base_txt))
                 helpers.Logger.i(cmd)
                 r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                 os.system('ssh root@%s rm "%s/verify-md5"' % (destination_host.hostname, self.installation_path.text()))
@@ -694,7 +698,7 @@ class Installer(QWidget):
                 r = subprocess.run(cmd, shell=True)
                 if r.returncode:
                     host.state = host.post_state = Host.State.FAILURE
-                    helpers.Logger.i('Ошибка выполнения post-скрипта: command=%s returncode=%d'% (cmd, r.returncode))
+                    helpers.Logger.i('Ошибка выполнения post-скрипта: command=%s returncode=%d' % (cmd, r.returncode))
                 else:
                     host.state = host.post_state = Host.State.POST_SUCCESS
                 self.table_changed.emit()
@@ -721,7 +725,7 @@ class Installer(QWidget):
                     source_host.state = Host.State.BASE_INSTALLING_SOURCE
                     destination_host.state = Host.State.BASE_INSTALLING_DESTINATION
                     helpers.Logger.i('Копирование base: %s -> %s' % (source_host.hostname,
-                                                                                     destination_host.hostname))
+                                                                     destination_host.hostname))
                     threading.Thread(target=self.do_copy_base, args=(source_host, destination_host)).start()
                     any_base_copy_started = True
         if not have_source_host:  # Нет source-хоста но возможно уже запущенно какое-то копирование
@@ -730,7 +734,7 @@ class Installer(QWidget):
                     have_source_host = True
                     break
         if not have_source_host:
-            first_host = None 
+            first_host = None
             for destination_host in [host for host in self.table.model().data.hosts if host.checked]:
                 if destination_host.hostname == self.hostname and destination_host.state == destination_host.state.QUEUED:
                     first_host = destination_host  # Начинаем с локального компьютера, если возможно
@@ -823,7 +827,7 @@ class Installer(QWidget):
         else:
             unpack_to = self.unpack_distribution(uri)
             g = glob.glob(os.path.join(unpack_to, 'base', 'base*.txt'))
-            if len(g)!=1:  # файл вида base*.txt в корне распакованного дистрибутива должен быть только один!
+            if len(g) != 1:  # файл вида base*.txt в корне распакованного дистрибутива должен быть только один!
                 self.state = Installer.State.DEFAULT
                 helpers.Logger.e('После распаковки не найден base*.txt')
                 self.state_changed.emit()
@@ -900,7 +904,7 @@ class Installer(QWidget):
             shutil.rmtree(unpack_to)
         helpers.Logger.i('Создание каталога распаковки %s' % unpack_to)
         os.makedirs(unpack_to)
-        cmd = '7za x "'+file+'" -aoa -o"'+unpack_to+'"'
+        cmd = '7za x "' + file + '" -aoa -o"' + unpack_to + '"'
         helpers.Logger.i(cmd)
         r = subprocess.run(cmd, shell=True)
         if r.returncode != 0:
