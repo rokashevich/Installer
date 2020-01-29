@@ -665,12 +665,16 @@ class Installer(QWidget):
         for host in hosts:
             self.table_changed.emit()
             hostname = host.hostname
-            r = helpers.copy_from_local_to_remote(common_path, hostname,
-                                                  self.installation_path.text().strip(), False)
-            r.wait()
-            if r.returncode != 0:
-                host.state = Host.State.FAILURE
-                continue
+
+            # Подкаталог конфигураций common не обязателен!
+            if not os.path.exists(common_path):
+                r = helpers.copy_from_local_to_remote(common_path, hostname,
+                                                      self.installation_path.text().strip(), False)
+                r.wait()
+                if r.returncode != 0:
+                    host.state = Host.State.FAILURE
+                    continue
+
             personal_path = os.path.join(self.distribution.configurations_dir, conf_name, hostname)
             r = helpers.copy_from_local_to_remote(personal_path, hostname,
                                                   self.installation_path.text().strip(), False)
