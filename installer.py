@@ -667,7 +667,8 @@ class Installer(QWidget):
             hostname = host.hostname
 
             # Подкаталог конфигураций common не обязателен!
-            if not os.path.exists(common_path):
+
+            if os.path.isdir(common_path):
                 r = helpers.copy_from_local_to_remote(common_path, hostname,
                                                       self.installation_path.text().strip(), False)
                 r.wait()
